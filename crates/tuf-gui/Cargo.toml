@@ -23,3 +23,23 @@ slint-build = "=1.18.1"
 
 [dev-dependencies]
 i-slint-backend-testing = "=1.18.1"
+
+[package.metadata.deb]
+maintainer = "Nishant Harkut <nhnishantharkut@gmail.com>"
+copyright = "2026, Nishant Harkut <nhnishantharkut@gmail.com>"
+license-file = ["../../LICENSE", "4"]
+extended-description = """\
+Native Slint desktop control center for ASUS TUF/ROG laptops and VESA DDC/CI \
+external displays on Linux. Supports dual-display brightness and refresh-rate \
+controls, DDC/CI monitor calibration, asusd firmware tuning, and dGPU-safe \
+sysfs telemetry."""
+section = "utils"
+priority = "optional"
+depends = "$auto, dbus, ddcutil"
+recommends = "asusd"
+assets = [
+    ["target/release/tuf-gui", "usr/bin/tuf-gui", "755"],
+    ["../../packaging/tuf-helper.desktop", "usr/share/applications/tuf-helper.desktop", "644"],
+    ["../../assets/tuf-helper.svg", "usr/share/icons/hicolor/scalable/apps/tuf-helper.svg", "644"],
+    ["../../packaging/io.github.nishantharkut.TufHelper.metainfo.xml", "usr/share/metainfo/io.github.nishantharkut.TufHelper.metainfo.xml", "644"],
+]

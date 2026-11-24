@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.nishantharkut.TufHelper</id>
+  <metadata_license>FSFAP</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <name>TUF-Helper</name>
+  <summary>Control center for ASUS laptops and DDC/CI monitors</summary>
+  <developer id="io.github.nishantharkut">
+    <name>Nishant Harkut</name>
+  </developer>
+  <description>
+    <p>
+      TUF-Helper is a lightweight native Linux desktop control center built with Rust and Slint
+      for ASUS TUF and ROG laptops alongside VESA DDC/CI external monitors.
+    </p>
+    <ul>
+      <li>Simultaneous internal panel (GNOME Mutter SetBacklight) and external monitor (DDC/CI VCP 0x10) brightness and refresh-rate control</li>
+      <li>External display calibration: contrast (0x12), color presets (0x14), per-channel RGB gain (0x16/0x18/0x1A), DPMS standby (0xD6), Wayland rotation, and PipeWire audio fallback</li>
+      <li>ASUS firmware tuning via asusd: power profiles, dual fan curves with rollback protection, GPU mode switching, CPU power limits, NVIDIA thermal target, Aura lighting, overdrive, and battery charge threshold</li>
+      <li>Low-overhead sysfs telemetry for CPU/GPU temperatures and fan RPMs without waking a suspended NVIDIA dGPU</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">tuf-helper.desktop</launchable>
+  <provides>
+    <binary>tuf-gui</binary>
+  </provides>
+  <url type="homepage">https://github.com/nishantharkut/tuf-helper</url>
+  <url type="bugtracker">https://github.com/nishantharkut/tuf-helper/issues</url>
+  <url type="vcs-browser">https://github.com/nishantharkut/tuf-helper</url>
+  <screenshots>
+    <screenshot type="default">
+      <caption>Overview tab showing power profile, GPU mode, lighting, and battery charge limit</caption>
+      <image type="source" width="580" height="1115">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/overview.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Cooling tab with live sysfs temperature and fan telemetry</caption>
+      <image type="source" width="580" height="1080">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/cooling.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Display tab with dual-screen brightness, contrast, and refresh-rate controls</caption>
+      <image type="source" width="580" height="1015">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/display-controls.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Display calibration tab with color presets, RGB gain, orientation, and audio volume</caption>
+      <image type="source" width="580" height="1030">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/display-calibration.png</image>
+    </screenshot>
+  </screenshots>
+  <content_rating type="oars-1.1" />
+  <categories>
+    <category>Settings</category>
+    <category>HardwareSettings</category>
+  </categories>
+  <keywords>
+    <keyword>ASUS</keyword>
+    <keyword>TUF</keyword>
+    <keyword>ROG</keyword>
+    <keyword>DDC/CI</keyword>
+    <keyword>Monitor</keyword>
+    <keyword>Battery</keyword>
+    <keyword>Cooling</keyword>
+    <keyword>Wayland</keyword>
+  </keywords>
+  <releases>
+    <release version="0.1.0" date="2026-11-25">
+      <url type="details">https://github.com/nishantharkut/tuf-helper/releases/tag/v0.1.0</url>
+      <description>
+        <p>Initial release featuring dual-display brightness and refresh-rate control, VESA DDC/CI calibration, ASUS asusd firmware tuning, and dGPU-safe sysfs telemetry.</p>
+      </description>
+    </release>
+  </releases>
+</component>
