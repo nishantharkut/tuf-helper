@@ -1,6 +1,7 @@
 mod autostart;
 mod controls;
 mod hardware;
+mod signals;
 mod telemetry;
 
 use std::fs;
@@ -14,24 +15,79 @@ use slint::{ComponentHandle, Weak};
 use zbus::blocking::{connection::Builder, Proxy};
 use zbus::fdo::{RequestNameFlags, RequestNameReply};
 
-use hardware::Action;
+use controls::CliCommand;
+use hardware::{Action, ActionOutcome, HardwareQueue};
 
 slint::include_modules!();
 
 const APP_NAME: &str = "local.TufHelper";
 const APP_PATH: &str = "/local/TufHelper";
+const CONTROL_DBUS_TIMEOUT: Duration = Duration::from_secs(2);
+const SHORTCUT_WORKER_TIMEOUT: Duration = Duration::from_secs(12);
+const SHORTCUT_DBUS_TIMEOUT: Duration = Duration::from_secs(15);
 
-struct Activation(Weak<AppWindow>);
+fn show_window(ui: &Weak<AppWindow>) -> zbus::fdo::Result<()> {
+    ui.upgrade_in_event_loop(|app| match app.show() {
+        Ok(()) => app.invoke_refresh_requested(),
+        Err(error) => eprintln!("Could not show TUF-Helper: {error}"),
+    })
+    .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))
+}
+
+struct Activation {
+    ui: Weak<AppWindow>,
+    queue: HardwareQueue,
+}
 
 #[zbus::interface(name = "local.TufHelper")]
 impl Activation {
     fn show(&self) -> zbus::fdo::Result<()> {
-        self.0
-            .upgrade_in_event_loop(|app| match app.show() {
-                Ok(()) => app.invoke_refresh_requested(),
-                Err(error) => eprintln!("Could not show TUF-Helper: {error}"),
+        show_window(&self.ui)
+    }
+
+    fn toggle(&self) -> zbus::fdo::Result<()> {
+        self.ui
+            .upgrade_in_event_loop(|app| {
+                if app.window().is_visible() {
+                    let _ = app.hide();
+                } else if let Err(error) = app.show() {
+                    eprintln!("Could not show TUF-Helper: {error}");
+                } else {
+                    app.invoke_refresh_requested();
+                }
             })
             .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))
+    }
+
+    fn cycle_profile(&self) -> zbus::fdo::Result<String> {
+        match self
+            .queue
+            .execute_blocking(Action::CycleProfile, SHORTCUT_WORKER_TIMEOUT)
+        {
+            Ok(ActionOutcome::Profile(profile)) => Ok(profile.as_str().into()),
+            Ok(_) => Err(zbus::fdo::Error::Failed(
+                "Unexpected operating mode result".into(),
+            )),
+            Err(error) => Err(zbus::fdo::Error::Failed(error)),
+        }
+    }
+
+    fn step_monitor_brightness(&self, delta: i32) -> zbus::fdo::Result<i32> {
+        if !(-100..=100).contains(&delta) {
+            return Err(zbus::fdo::Error::InvalidArgs(format!(
+                "Brightness step {delta} must be between -100 and 100"
+            )));
+        }
+        match self.queue.execute_blocking(
+            Action::StepMonitorBrightness(delta),
+            SHORTCUT_WORKER_TIMEOUT,
+        ) {
+            Ok(ActionOutcome::Brightness(pct)) => Ok(pct),
+            Ok(_) => Err(zbus::fdo::Error::Failed(
+                "Unexpected monitor brightness result".into(),
+            )),
+            Err(error) => Err(zbus::fdo::Error::Failed(error)),
+        }
     }
 }
 
@@ -78,7 +134,7 @@ impl ksni::Tray for TufTray {
 
     fn watcher_offline(&self, _reason: ksni::OfflineReason) -> bool {
         self.available.store(false, Ordering::Relaxed);
-        let _ = Activation(self.ui.clone()).show();
+        let _ = show_window(&self.ui);
         true
     }
 
@@ -88,7 +144,7 @@ impl ksni::Tray for TufTray {
             StandardItem {
                 label: "Open TUF-Helper".into(),
                 activate: Box::new(|tray: &mut Self| {
-                    let _ = Activation(tray.ui.clone()).show();
+                    let _ = show_window(&tray.ui);
                 }),
                 ..Default::default()
             }
@@ -161,23 +217,34 @@ fn tray_icon() -> Option<ksni::Icon> {
     })
 }
 
-fn submit(app: &AppWindow, tx: &SyncSender<Action>, action: Action) {
-    let refreshing = matches!(action, Action::Refresh);
-    if app.get_busy() || (refreshing && app.get_refreshing()) {
-        return;
-    }
-    match tx.try_send(action) {
-        Ok(()) if refreshing => app.set_refreshing(true),
-        Ok(()) => {
-            app.set_busy(true);
-            if let Some(label) = action.label() {
-                app.set_status_error(false);
-                app.set_status(format!("Requesting {label}…").into());
+fn submit(app: &AppWindow, queue: &HardwareQueue, action: Action) {
+    match action {
+        Action::Refresh => {
+            if queue.request_full_refresh() {
+                app.set_refreshing(true);
+            } else {
+                app.set_status_error(true);
+                app.set_status("Hardware worker unavailable".into());
             }
         }
-        Err(error) => {
-            app.set_status_error(true);
-            app.set_status(format!("Hardware worker unavailable: {error}").into());
+        other => {
+            if app.get_busy() {
+                return;
+            }
+            let label = other.label();
+            match queue.enqueue_action(other) {
+                Ok(()) => {
+                    app.set_busy(true);
+                    if let Some(label) = label {
+                        app.set_status_error(false);
+                        app.set_status(format!("Requesting {label}…").into());
+                    }
+                }
+                Err(error) => {
+                    app.set_status_error(true);
+                    app.set_status(format!("Hardware worker unavailable: {error}").into());
+                }
+            }
         }
     }
 }
@@ -188,9 +255,14 @@ fn request_sample(app: &AppWindow, samples: &SyncSender<()>) {
     }
 }
 
-fn wire_controls(app: &AppWindow, tx: &SyncSender<Action>) {
+fn selected_connector(app: &AppWindow) -> Option<String> {
+    let conn = app.get_selected_external_connector();
+    (!conn.is_empty()).then(|| conn.to_string())
+}
+
+fn wire_controls(app: &AppWindow, queue: &HardwareQueue) {
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_tuning_requested(move |kind, value| {
         let Some(app) = ui.upgrade() else { return };
         let action = match kind {
@@ -205,21 +277,27 @@ fn wire_controls(app: &AppWindow, tx: &SyncSender<Action>) {
             TuningAction::GpuTemperature => Action::GpuTemperature(value),
             TuningAction::BuiltinBrightness => Action::BuiltinBrightness(value),
             TuningAction::BuiltinRefresh => Action::BuiltinRefresh(value),
-            TuningAction::DisplayBrightness => Action::DisplayBrightness(value),
-            TuningAction::DisplayRefresh => Action::DisplayRefresh(value),
+            TuningAction::DisplayBrightness => Action::DisplayBrightness {
+                connector: selected_connector(&app),
+                value,
+            },
+            TuningAction::DisplayRefresh => Action::DisplayRefresh {
+                connector: selected_connector(&app),
+                value,
+            },
             _ => return,
         };
         submit(&app, &sender, action);
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_charge_limit_changed(move |value| {
         if let (Some(app), Ok(value)) = (ui.upgrade(), u8::try_from(value)) {
             submit(&app, &sender, Action::ChargeLimit(value));
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_custom_charge_requested(move |text| {
         if let Some(app) = ui.upgrade() {
             match controls::parse_charge_limit(&text) {
@@ -232,28 +310,189 @@ fn wire_controls(app: &AppWindow, tx: &SyncSender<Action>) {
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
+    app.on_one_shot_charge_requested(move || {
+        if let Some(app) = ui.upgrade() {
+            submit(&app, &sender, Action::OneShotCharge);
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_ac_automation_changed(move |enabled, profile| {
+        if let Some(app) = ui.upgrade() {
+            if let Ok(profile) = u32::try_from(profile) {
+                submit(&app, &sender, Action::AcAutomation(enabled, profile));
+            } else {
+                app.set_status_error(true);
+                app.set_status("Select a valid AC platform profile.".into());
+            }
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_battery_automation_changed(move |enabled, profile| {
+        if let Some(app) = ui.upgrade() {
+            if let Ok(profile) = u32::try_from(profile) {
+                submit(&app, &sender, Action::BatteryAutomation(enabled, profile));
+            } else {
+                app.set_status_error(true);
+                app.set_status("Select a valid battery platform profile.".into());
+            }
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_disable_nvidia_on_battery_changed(move |enabled| {
+        if let Some(app) = ui.upgrade() {
+            submit(&app, &sender, Action::DisableNvidiaOnBattery(enabled));
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_linked_epp_changed(move |enabled| {
+        if let Some(app) = ui.upgrade() {
+            submit(&app, &sender, Action::LinkedEpp(enabled));
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_auto_refresh_toggled(move |enabled| {
+        if let Some(app) = ui.upgrade() {
+            match controls::save_auto_refresh(enabled) {
+                Ok(()) => {
+                    sender.set_auto_refresh_enabled(enabled);
+                    app.set_auto_refresh_enabled(enabled);
+                    app.set_status_error(false);
+                    app.set_status(
+                        if enabled {
+                            "Auto refresh rate on AC / Battery enabled"
+                        } else {
+                            "Auto refresh rate on AC / Battery disabled"
+                        }
+                        .into(),
+                    );
+                    if enabled {
+                        sender.request_poll();
+                    }
+                }
+                Err(error) => {
+                    app.set_status_error(true);
+                    app.set_status(format!("Could not save auto refresh setting: {error}").into());
+                }
+            }
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_sppt_limit_requested(move |watts| {
+        if let Some(app) = ui.upgrade() {
+            if watts < 0 {
+                app.set_status_error(true);
+                app.set_status("Enter a valid whole number of watts for SPPT.".into());
+            } else {
+                submit(&app, &sender, Action::SpptLimit(watts));
+            }
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_fppt_limit_requested(move |watts| {
+        if let Some(app) = ui.upgrade() {
+            if watts < 0 {
+                app.set_status_error(true);
+                app.set_status("Enter a valid whole number of watts for FPPT.".into());
+            } else {
+                submit(&app, &sender, Action::FpptLimit(watts));
+            }
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_nv_boost_requested(move |watts| {
+        if let Some(app) = ui.upgrade() {
+            if watts < 0 {
+                app.set_status_error(true);
+                app.set_status("Enter a valid whole number of watts for Dynamic Boost.".into());
+            } else {
+                submit(&app, &sender, Action::NvBoost(watts));
+            }
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_custom_fan_curves_applied(move |cpu_t, cpu_p, gpu_t, gpu_p| {
+        use slint::Model;
+        if let Some(app) = ui.upgrade() {
+            let Ok(profile) = u32::try_from(app.get_profile_id()) else {
+                app.set_status_error(true);
+                app.set_status("Platform profile is unavailable".into());
+                return;
+            };
+            let ct: Vec<i32> = cpu_t.iter().collect();
+            let cp: Vec<i32> = cpu_p.iter().collect();
+            let gt: Vec<i32> = gpu_t.iter().collect();
+            let gp: Vec<i32> = gpu_p.iter().collect();
+            match (
+                controls::parse_fan_curve_points(&ct, &cp),
+                controls::parse_fan_curve_points(&gt, &gp),
+            ) {
+                (Ok((cpu_temps, cpu_pwms)), Ok((gpu_temps, gpu_pwms))) => submit(
+                    &app,
+                    &sender,
+                    Action::ApplyFanCurves {
+                        profile,
+                        cpu_temps,
+                        cpu_pwms,
+                        gpu_temps,
+                        gpu_pwms,
+                    },
+                ),
+                (Err(err), _) | (_, Err(err)) => {
+                    app.set_status_error(true);
+                    app.set_status(err.into());
+                }
+            }
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_fan_curves_reset_requested(move || {
+        if let Some(app) = ui.upgrade() {
+            if let Ok(profile) = u32::try_from(app.get_profile_id()) {
+                submit(&app, &sender, Action::ResetFanCurves(profile));
+            }
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_external_display_selected(move |idx| {
+        if let (Some(app), Ok(idx)) = (ui.upgrade(), usize::try_from(idx)) {
+            sender.select_external_display(&app, idx);
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
     app.on_overdrive_changed(move |enabled| {
         if let Some(app) = ui.upgrade() {
             submit(&app, &sender, Action::PanelOverdrive(enabled));
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_brightness_changed(move |value| {
         if let (Some(app), Ok(value)) = (ui.upgrade(), u32::try_from(value)) {
             submit(&app, &sender, Action::Brightness(value));
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_aura_mode_changed(move |value| {
         if let (Some(app), Ok(value)) = (ui.upgrade(), u32::try_from(value)) {
             submit(&app, &sender, Action::AuraMode(value));
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_aura_color_selected(move |text| {
         if let Some(app) = ui.upgrade() {
             match controls::parse_hex(&text) {
@@ -266,52 +505,128 @@ fn wire_controls(app: &AppWindow, tx: &SyncSender<Action>) {
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_display_contrast_changed(move |value| {
         if let Some(app) = ui.upgrade() {
-            submit(&app, &sender, Action::DisplayContrast(value));
+            submit(
+                &app,
+                &sender,
+                Action::DisplayContrast {
+                    connector: selected_connector(&app),
+                    value,
+                },
+            );
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_display_color_preset_changed(move |preset| {
         if let Some(app) = ui.upgrade() {
-            submit(&app, &sender, Action::DisplayColorPreset(preset));
+            submit(
+                &app,
+                &sender,
+                Action::DisplayColorPreset {
+                    connector: selected_connector(&app),
+                    preset,
+                },
+            );
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
+    app.on_display_color_preset_raw_changed(move |code| {
+        if let (Some(app), Ok(vcp)) = (ui.upgrade(), u16::try_from(code)) {
+            submit(
+                &app,
+                &sender,
+                Action::DisplayColorPresetRaw {
+                    connector: selected_connector(&app),
+                    vcp,
+                },
+            );
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
     app.on_display_rgb_changed(move |r, g, b| {
         if let Some(app) = ui.upgrade() {
-            submit(&app, &sender, Action::DisplayRgb((r, g, b)));
+            submit(
+                &app,
+                &sender,
+                Action::DisplayRgb {
+                    connector: selected_connector(&app),
+                    rgb: (r, g, b),
+                },
+            );
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
+    app.on_display_input_changed(move |code| {
+        if let (Some(app), Ok(vcp)) = (ui.upgrade(), u16::try_from(code)) {
+            submit(
+                &app,
+                &sender,
+                Action::DisplayInput {
+                    connector: selected_connector(&app),
+                    vcp,
+                },
+            );
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
+    app.on_display_scaling_changed(move |code| {
+        if let (Some(app), Ok(vcp)) = (ui.upgrade(), u16::try_from(code)) {
+            submit(
+                &app,
+                &sender,
+                Action::DisplayScaling {
+                    connector: selected_connector(&app),
+                    vcp,
+                },
+            );
+        }
+    });
+    let ui = app.as_weak();
+    let sender = queue.clone();
     app.on_display_volume_changed(move |value| {
         if let Some(app) = ui.upgrade() {
             submit(&app, &sender, Action::DisplayVolume(value));
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_display_mute_toggled(move |muted| {
         if let Some(app) = ui.upgrade() {
             submit(&app, &sender, Action::DisplayMute(muted));
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_display_sleep_requested(move || {
         if let Some(app) = ui.upgrade() {
-            submit(&app, &sender, Action::DisplaySleep);
+            submit(
+                &app,
+                &sender,
+                Action::DisplaySleep {
+                    connector: selected_connector(&app),
+                },
+            );
         }
     });
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let sender = queue.clone();
     app.on_display_orientation_changed(move |value| {
         if let Some(app) = ui.upgrade() {
-            submit(&app, &sender, Action::DisplayOrientation(value));
+            submit(
+                &app,
+                &sender,
+                Action::DisplayOrientation {
+                    connector: selected_connector(&app),
+                    value,
+                },
+            );
         }
     });
     let ui = app.as_weak();
@@ -368,22 +683,157 @@ fn configure_renderer() {
     }
 }
 
+fn usage_text() -> &'static str {
+    concat!(
+        "Usage: tuf-gui [OPTION]\n\n",
+        "Options:\n",
+        "  --minimized                          Start hidden in the system tray\n",
+        "  --toggle                             Toggle main window visibility\n",
+        "  --cycle-profile                      Cycle ASUS operating mode cleanly\n",
+        "  --step-monitor-brightness <DELTA>    Adjust external monitor brightness by DELTA (-100..=100)\n",
+        "  -h, --help                           Print this help text",
+    )
+}
+
+fn call_running<R>(
+    timeout: Duration,
+    call: impl FnOnce(&Proxy<'_>) -> zbus::Result<R>,
+) -> zbus::Result<R> {
+    let session = Builder::session()?.method_timeout(timeout).build()?;
+    let proxy = Proxy::new(&session, APP_NAME, APP_PATH, APP_NAME)?;
+    call(&proxy)
+}
+
+fn is_instance_absent(err: &zbus::Error) -> bool {
+    match err {
+        zbus::Error::MethodError(name, _, _) => matches!(
+            name.as_str(),
+            "org.freedesktop.DBus.Error.ServiceUnknown"
+                | "org.freedesktop.DBus.Error.NameHasNoOwner"
+        ),
+        zbus::Error::FDO(fdo) => matches!(
+            fdo.as_ref(),
+            zbus::fdo::Error::ServiceUnknown(_) | zbus::fdo::Error::NameHasNoOwner(_)
+        ),
+        _ => false,
+    }
+}
+
+fn try_forward_to_running(cmd: CliCommand) -> Result<bool, Box<dyn std::error::Error>> {
+    match cmd {
+        CliCommand::Open => match call_running(CONTROL_DBUS_TIMEOUT, |proxy| {
+            proxy.call::<_, _, ()>("Show", &())
+        }) {
+            Ok(()) => Ok(true),
+            Err(err) if is_instance_absent(&err) => Ok(false),
+            Err(err) => Err(err.into()),
+        },
+        CliCommand::Toggle => match call_running(CONTROL_DBUS_TIMEOUT, |proxy| {
+            proxy.call::<_, _, ()>("Toggle", &())
+        }) {
+            Ok(()) => Ok(true),
+            Err(err) if is_instance_absent(&err) => Ok(false),
+            Err(err) => Err(err.into()),
+        },
+        CliCommand::Minimized => {
+            let session = Builder::session()?
+                .method_timeout(CONTROL_DBUS_TIMEOUT)
+                .build()?;
+            let dbus = zbus::blocking::fdo::DBusProxy::new(&session)?;
+            let name: zbus::names::BusName<'_> = APP_NAME.try_into()?;
+            Ok(dbus.name_has_owner(name)?)
+        }
+        CliCommand::Help | CliCommand::CycleProfile | CliCommand::StepMonitorBrightness(_) => {
+            Ok(false)
+        }
+    }
+}
+
+fn run_profile_shortcut() -> Result<(), Box<dyn std::error::Error>> {
+    match call_running(SHORTCUT_DBUS_TIMEOUT, |proxy| {
+        proxy.call::<_, _, String>("CycleProfile", &())
+    }) {
+        Ok(profile) => {
+            println!("Operating mode: {profile}");
+            return Ok(());
+        }
+        Err(err) if is_instance_absent(&err) => {}
+        Err(err) => return Err(err.into()),
+    }
+    let profile = tuf_core::AsusDbusClient::new()?.cycle_profile()?;
+    println!("Operating mode: {}", profile.as_str());
+    Ok(())
+}
+
+fn run_brightness_shortcut(delta: i32) -> Result<(), Box<dyn std::error::Error>> {
+    match call_running(SHORTCUT_DBUS_TIMEOUT, |proxy| {
+        proxy.call::<_, _, i32>("StepMonitorBrightness", &(delta,))
+    }) {
+        Ok(next) => {
+            println!("Monitor brightness: {next}%");
+            return Ok(());
+        }
+        Err(err) if is_instance_absent(&err) => {}
+        Err(err) => return Err(err.into()),
+    }
+    let next = tuf_core::dbus::display::DisplayClient::new()?.step_external_brightness(delta)?;
+    println!("Monitor brightness: {next}%");
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let start_minimized = std::env::args_os().any(|arg| arg == "--minimized");
+    let cmd = match controls::parse_cli_args(std::env::args_os()) {
+        Ok(cmd) => cmd,
+        Err(msg) => {
+            eprintln!("{msg}\n\n{}", usage_text());
+            return Err(msg.into());
+        }
+    };
+    match cmd {
+        CliCommand::Help => {
+            println!("{}", usage_text());
+            return Ok(());
+        }
+        CliCommand::CycleProfile => return run_profile_shortcut(),
+        CliCommand::StepMonitorBrightness(delta) => return run_brightness_shortcut(delta),
+        CliCommand::Open | CliCommand::Minimized | CliCommand::Toggle => {}
+    }
+
+    if try_forward_to_running(cmd)? {
+        return Ok(());
+    }
+
+    let start_minimized = matches!(cmd, CliCommand::Minimized);
     configure_renderer();
 
     let app = AppWindow::new()?;
     let _ = slint::set_xdg_app_id("tuf-helper");
+    let auto_refresh = controls::load_auto_refresh();
+    app.set_auto_refresh_enabled(auto_refresh);
+    let initial_dark = signals::read_portal_dark_mode();
+    app.set_dark_mode(initial_dark);
+    let queue = HardwareQueue::with_auto_refresh(auto_refresh);
     let session = Builder::session()?
-        .method_timeout(Duration::from_secs(2))
-        .serve_at(APP_PATH, Activation(app.as_weak()))?
+        .method_timeout(CONTROL_DBUS_TIMEOUT)
+        .serve_at(
+            APP_PATH,
+            Activation {
+                ui: app.as_weak(),
+                queue: queue.clone(),
+            },
+        )?
         .build()?;
     match session.request_name_with_flags(APP_NAME, RequestNameFlags::DoNotQueue.into()) {
         Ok(RequestNameReply::PrimaryOwner | RequestNameReply::AlreadyOwner) => {}
         Ok(RequestNameReply::Exists | RequestNameReply::InQueue) | Err(zbus::Error::NameTaken) => {
-            if !start_minimized {
-                Proxy::new(&session, APP_NAME, APP_PATH, APP_NAME)?
-                    .call::<_, _, ()>("Show", &())?;
+            match cmd {
+                CliCommand::Toggle => {
+                    Proxy::new(&session, APP_NAME, APP_PATH, APP_NAME)?.call::<_, _, ()>("Toggle", &())?;
+                }
+                CliCommand::Open => {
+                    Proxy::new(&session, APP_NAME, APP_PATH, APP_NAME)?.call::<_, _, ()>("Show", &())?;
+                }
+                _ => {}
             }
             return Ok(());
         }
@@ -426,13 +876,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let _ = slint::quit_event_loop();
     });
 
-    // At most one refresh and one write can be queued. Reserve a slot for shutdown.
-    let (tx, rx) = sync_channel(3);
     let ui = app.as_weak();
+    let worker_queue = queue.clone();
     let worker = std::thread::Builder::new()
         .name("tuf-hardware".into())
-        .spawn(move || hardware::run(rx, ui))?;
-    wire_controls(&app, &tx);
+        .spawn(move || hardware::run(worker_queue, ui))?;
+    wire_controls(&app, &queue);
+    let signal_handle = signals::spawn(queue.clone(), app.as_weak(), initial_dark);
 
     let (sample_sender, sample_requests) = sync_channel(1);
     let ui = app.as_weak();
@@ -454,26 +904,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let queue_for_refresh = queue.clone();
     app.on_refresh_requested(move || {
         if let Some(app) = ui.upgrade() {
             request_sample(&app, &sample_sender);
-            submit(&app, &sender, Action::Refresh);
+            submit(&app, &queue_for_refresh, Action::Refresh);
         }
     });
 
     let refresh = slint::Timer::default();
     let ui = app.as_weak();
-    let sender = tx.clone();
+    let queue_for_timer = queue.clone();
     refresh.start(
         slint::TimerMode::Repeated,
         Duration::from_secs(5),
         move || {
             if ui
                 .upgrade()
-                .is_some_and(|app| app.window().is_visible() && !app.get_busy())
+                .is_some_and(|app| {
+                    app.window().is_visible() && !app.get_busy() && !app.get_refreshing()
+                })
             {
-                let _ = sender.try_send(Action::Poll);
+                queue_for_timer.request_poll();
             }
         },
     );
@@ -484,13 +936,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let result = slint::run_event_loop_until_quit();
-    let _ = tx.send(Action::Shutdown);
+    signal_handle.stop();
+    queue.shutdown();
     let _ = app.hide();
     if let Some(handle) = tray_handle {
         handle.shutdown().wait();
     }
+    drop(telemetry);
     drop(refresh);
-    drop(tx);
     drop(app);
     // An in-flight settings write finishes before shutdown. Refresh reads are bounded by D-Bus timeouts.
     if worker.join().is_err() {
@@ -503,20 +956,127 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hardware::RefreshKind;
 
     #[test]
     fn clicking_a_charge_limit_during_refresh_queues_one_change() {
         i_slint_backend_testing::init_no_event_loop();
         let app = AppWindow::new().unwrap();
-        let (sender, receiver) = sync_channel(3);
-        wire_controls(&app, &sender);
+        let queue = HardwareQueue::new();
+        wire_controls(&app, &queue);
 
-        submit(&app, &sender, Action::Refresh);
+        submit(&app, &queue, Action::Refresh);
         app.invoke_charge_limit_changed(77);
         app.invoke_charge_limit_changed(80);
 
-        assert!(matches!(receiver.try_recv(), Ok(Action::Refresh)));
-        assert!(matches!(receiver.try_recv(), Ok(Action::ChargeLimit(77))));
-        assert!(receiver.try_recv().is_err());
+        let (actions, pending) = queue.drain_test_state();
+        assert_eq!(pending, Some(RefreshKind::Full));
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::ChargeLimit(77)));
+    }
+
+    #[test]
+    fn full_refresh_is_not_dropped_while_busy_or_refreshing_and_poll_does_not_stack() {
+        i_slint_backend_testing::init_no_event_loop();
+        let app = AppWindow::new().unwrap();
+        let queue = HardwareQueue::new();
+        wire_controls(&app, &queue);
+
+        app.invoke_charge_limit_changed(80);
+        assert!(app.get_busy());
+
+        if !app.get_busy() && !app.get_refreshing() {
+            queue.request_poll();
+        }
+        submit(&app, &queue, Action::Refresh);
+        if !app.get_busy() && !app.get_refreshing() {
+            queue.request_poll();
+        }
+        queue.request_poll();
+
+        assert!(app.get_refreshing());
+        let (actions, pending) = queue.drain_test_state();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(pending, Some(RefreshKind::Full));
+    }
+
+    #[test]
+    fn instance_absent_matches_only_service_unknown_or_name_has_no_owner() {
+        let missing_service = zbus::Error::FDO(Box::new(zbus::fdo::Error::ServiceUnknown(
+            "missing".into(),
+        )));
+        let no_owner = zbus::Error::FDO(Box::new(zbus::fdo::Error::NameHasNoOwner(
+            "no owner".into(),
+        )));
+        let failed = zbus::Error::FDO(Box::new(zbus::fdo::Error::Failed("hw error".into())));
+        let no_reply = zbus::Error::FDO(Box::new(zbus::fdo::Error::NoReply("timeout".into())));
+
+        assert!(is_instance_absent(&missing_service));
+        assert!(is_instance_absent(&no_owner));
+        assert!(!is_instance_absent(&failed));
+        assert!(!is_instance_absent(&no_reply));
+    }
+
+    #[test]
+    fn phase_b_controls_validate_inputs_and_route_selected_connector() {
+        i_slint_backend_testing::init_no_event_loop();
+        let app = AppWindow::new().unwrap();
+        let queue = HardwareQueue::new();
+        wire_controls(&app, &queue);
+
+        app.invoke_sppt_limit_requested(-1);
+        assert!(app.get_status_error());
+        assert!(!app.get_busy());
+
+        app.set_profile_id(1);
+        let bad_temps = slint::ModelRc::new(slint::VecModel::from(vec![
+            50, 48, 56, 64, 72, 80, 88, 96,
+        ]));
+        let good_pwms = slint::ModelRc::new(slint::VecModel::from(vec![
+            0, 15, 28, 42, 58, 74, 90, 100,
+        ]));
+        app.invoke_custom_fan_curves_applied(
+            bad_temps,
+            good_pwms.clone(),
+            good_pwms.clone(),
+            good_pwms,
+        );
+        assert!(app.get_status_error());
+        assert!(!app.get_busy());
+
+        app.set_status_error(false);
+        app.set_selected_external_connector("DP-2".into());
+        app.invoke_display_input_changed(0x1b);
+        assert!(app.get_busy());
+        let (actions, _) = queue.drain_test_state();
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(
+            &actions[0],
+            Action::DisplayInput {
+                connector: Some(conn),
+                vcp: 0x1b
+            } if conn == "DP-2"
+        ));
+
+        app.set_busy(false);
+        app.invoke_tuning_requested(TuningAction::DisplayRefresh, 120);
+        app.set_busy(false);
+        app.invoke_display_orientation_changed(1);
+        let (actions, _) = queue.drain_test_state();
+        assert_eq!(actions.len(), 2);
+        assert!(matches!(
+            &actions[0],
+            Action::DisplayRefresh {
+                connector: Some(conn),
+                value: 120
+            } if conn == "DP-2"
+        ));
+        assert!(matches!(
+            &actions[1],
+            Action::DisplayOrientation {
+                connector: Some(conn),
+                value: 1
+            } if conn == "DP-2"
+        ));
     }
 }

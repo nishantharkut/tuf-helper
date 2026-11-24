@@ -1,4 +1,4 @@
-// Ubuntu 24 (Yaru / Libadwaita + COSMIC Dark) Quick Overview Panel
+// Ubuntu 24 (Yaru / Libadwaita + COSMIC) Quick Overview Panel
 
 import { ComboBox } from "std-widgets.slint";
 import {
@@ -230,11 +230,13 @@ export component QuickPanel inherits VerticalLayout {
                     spacing: 12px;
                     VerticalLayout {
                         alignment: center;
+                        horizontal-stretch: 1;
                         Text {
                             text: root.builtin-name + " Brightness";
                             color: Yaru.text;
                             font-size: 13px;
                             font-weight: 500;
+                            wrap: word-wrap;
                         }
                     }
                     HorizontalLayout {
@@ -277,17 +279,20 @@ export component QuickPanel inherits VerticalLayout {
                     spacing: 12px;
                     VerticalLayout {
                         alignment: center;
+                        horizontal-stretch: 1;
                         spacing: 2px;
                         Text {
                             text: root.display-name + " Brightness";
                             color: Yaru.text;
                             font-size: 13px;
                             font-weight: 500;
+                            wrap: word-wrap;
                         }
                         if !root.display-ddc-available : Text {
                             text: "Enable DDC/CI in monitor OSD or check /dev/i2c permissions";
                             color: Yaru.text-dim;
                             font-size: 11px;
+                            wrap: word-wrap;
                         }
                     }
                     HorizontalLayout {

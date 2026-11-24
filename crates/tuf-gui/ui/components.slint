@@ -1,30 +1,58 @@
-// Ubuntu 24 (Yaru / Libadwaita + COSMIC Dark) Component Library
+// Ubuntu 24 (Yaru / Libadwaita + COSMIC) Component Library
 // Uses 100% opaque solid tokens and padded layouts for instant software-renderer speed and zero clipping.
 
 export global Yaru {
-    out property <color> bg: #1c1c1c;
-    out property <color> header: #242424;
-    out property <color> card: #282828;
-    out property <color> card-border: #383838;
-    out property <color> divider: #333333;
-    out property <color> control: #343434;
-    out property <color> control-hover: #404040;
-    out property <color> control-pressed: #2c2c2c;
-    out property <color> control-border: #464646;
+    in-out property <bool> dark-mode: true;
+
+    out property <color> bg: dark-mode ? #1c1c1c : #F6F5F4;
+    out property <color> header: dark-mode ? #242424 : #EBEBEB;
+    out property <color> header-border: dark-mode ? #323232 : #D4D1CD;
+    out property <color> surface: dark-mode ? #282828 : #FFFFFF;
+    out property <color> surface-2: dark-mode ? #343434 : #F0EFEE;
+    out property <color> surface-3: dark-mode ? #404040 : #E6E4E2;
+    out property <color> card: dark-mode ? #282828 : #FFFFFF;
+    out property <color> border: dark-mode ? #383838 : #DCDAD7;
+    out property <color> border-strong: dark-mode ? #464646 : #C6C3BF;
+    out property <color> card-border: dark-mode ? #383838 : #DCDAD7;
+    out property <color> divider: dark-mode ? #333333 : #E6E4E2;
+    out property <color> control: dark-mode ? #343434 : #F0EFEE;
+    out property <color> control-hover: dark-mode ? #404040 : #E6E4E2;
+    out property <color> control-pressed: dark-mode ? #2c2c2c : #DCDAD7;
+    out property <color> control-border: dark-mode ? #464646 : #C6C3BF;
+    out property <color> control-disabled: dark-mode ? #2b2b2b : #EAE8E6;
+    out property <color> control-disabled-border: dark-mode ? #353535 : #D5D2CE;
     out property <color> accent: #E95420;
     out property <color> accent-hover: #F26534;
     out property <color> accent-pressed: #C94417;
-    out property <color> blue: #3584E4;
-    out property <color> text: #F3F3F3;
-    out property <color> text-dim: #A0A0A0;
-    out property <color> text-muted: #7C7C7C;
-    out property <color> badge-bg: #353535;
-    out property <color> green: #2EC27E;
-    out property <color> yellow: #F5C211;
-    out property <color> red: #ED333B;
-    out property <color> error-bg: #362022;
-    out property <color> error-border: #783037;
-    out property <color> error-text: #FCA5A5;
+    out property <color> blue: dark-mode ? #3584E4 : #1C71D8;
+    out property <color> text: dark-mode ? #F3F3F3 : #242424;
+    out property <color> text-strong: dark-mode ? #ffffff : #111111;
+    out property <color> text-dim: dark-mode ? #A0A0A0 : #5E5E5E;
+    out property <color> text-muted: dark-mode ? #7C7C7C : #6E6E6E;
+    out property <color> badge-bg: dark-mode ? #353535 : #F0EFEE;
+    out property <color> green: dark-mode ? #2EC27E : #26A269;
+    out property <color> yellow: dark-mode ? #F5C211 : #E5A50A;
+    out property <color> red: dark-mode ? #ED333B : #C01C28;
+    out property <color> error-bg: dark-mode ? #362022 : #FDE8E8;
+    out property <color> error-border: dark-mode ? #783037 : #F5B7B1;
+    out property <color> error-text: dark-mode ? #FCA5A5 : #991B1B;
+    out property <color> switch-bg: dark-mode ? #3c3c3c : #CECCC8;
+    out property <color> switch-hover: dark-mode ? #484848 : #C0BEB9;
+    out property <color> switch-border: dark-mode ? #4d4d4d : #B5B2AC;
+    out property <color> slider-track: dark-mode ? #3e3e3e : #D6D3CF;
+    out property <color> slider-disabled: dark-mode ? #666666 : #B2AEA8;
+    out property <color> tab-tray-bg: dark-mode ? #1b1b1b : #DCDAD7;
+    out property <color> tab-tray-border: dark-mode ? #303030 : #C6C3BF;
+    out property <color> tab-active-bg: dark-mode ? #363636 : #FFFFFF;
+    out property <color> tab-hover-bg: dark-mode ? #2d2d2d : #E6E4E2;
+    out property <color> tab-active-border: dark-mode ? #464646 : #C6C3BF;
+    out property <color> chart-bg: dark-mode ? #1a1a1a : #F6F5F4;
+    out property <color> chart-border: dark-mode ? #303030 : #DCDAD7;
+    out property <color> chart-grid: dark-mode ? #282828 : #E6E4E2;
+    out property <color> focus-ring: dark-mode ? #ffffff : #242424;
+    out property <color> rgb-red: dark-mode ? #F28B82 : #C01C28;
+    out property <color> rgb-green: dark-mode ? #81C995 : #1E7E34;
+    out property <color> rgb-blue: dark-mode ? #8AB4F8 : #1A5FB4;
 }
 
 export component PreferencesGroupTitle inherits HorizontalLayout {
@@ -92,16 +120,18 @@ export component ValueBadge inherits Rectangle {
         alignment: center;
         Text {
             text: root.text;
-            color: Yaru.text;
+            color: root.highlight ? #ffffff : Yaru.text;
             font-size: 12px;
             font-weight: 600;
             vertical-alignment: center;
+            overflow: elide;
         }
     }
 }
 
 export component SegmentButton inherits Rectangle {
     in property <string> text;
+    in property <string> accessible_text;
     in property <bool> active: false;
     in property <bool> primary: false;
     in property <bool> compact: false;
@@ -115,7 +145,7 @@ export component SegmentButton inherits Rectangle {
     height: root.compact ? 34px : 38px;
     forward-focus: keys;
     accessible-role: button;
-    accessible-label: root.text;
+    accessible-label: root.accessible_text != "" ? root.accessible_text : root.text;
     accessible-enabled: root.available;
     accessible-action-default => { if root.available { root.clicked(); } }
 
@@ -131,17 +161,18 @@ export component SegmentButton inherits Rectangle {
         }
     }
 
-    background: primary ? (touch.pressed ? Yaru.accent-pressed : (touch.has-hover ? Yaru.accent-hover : Yaru.accent))
-        : (active ? root.active_bg
-        : (!root.available ? #2b2b2b
+    background: active ? root.active_bg
+        : (!root.available ? Yaru.surface-2
+        : (primary ? (touch.pressed ? Yaru.accent-pressed : (touch.has-hover ? Yaru.accent-hover : Yaru.accent))
         : (touch.pressed ? Yaru.control-pressed : (touch.has-hover ? Yaru.control-hover : Yaru.control))));
 
-    border-color: keys.has-focus ? #ffffff
-        : (active || primary ? root.active_border
-        : (!root.available ? #353535 : Yaru.control-border));
+    border-color: keys.has-focus ? Yaru.focus-ring
+        : (active ? root.active_border
+        : (!root.available ? Yaru.border
+        : (primary ? root.active_border : Yaru.control-border)));
     border-width: 1px;
     border-radius: 8px;
-    opacity: (root.available || root.active) ? 1.0 : 0.45;
+    opacity: (root.available || root.active) ? 1.0 : 0.65;
 
     touch := TouchArea {
         enabled: root.available;
@@ -157,9 +188,11 @@ export component SegmentButton inherits Rectangle {
         alignment: center;
         Text {
             text: root.text;
-            color: primary || active ? root.active_text : (touch.has-hover ? #ffffff : Yaru.text);
+            color: active || (primary && root.available) ? root.active_text
+                : (!root.available ? Yaru.text-dim
+                : (touch.has-hover ? Yaru.text-strong : Yaru.text));
             font-size: root.compact ? 12px : 12.5px;
-            font-weight: active || primary ? 600 : 500;
+            font-weight: active || (primary && root.available) ? 600 : 500;
             horizontal-alignment: center;
             vertical-alignment: center;
         }
@@ -195,10 +228,10 @@ export component ToggleSwitch inherits Rectangle {
     width: 46px;
     height: 26px;
     border-radius: 13px;
-    border-width: keys.has-focus ? 1px : 1px;
-    border-color: keys.has-focus ? #ffffff : (checked ? Yaru.accent : #4d4d4d);
+    border-width: 1px;
+    border-color: keys.has-focus ? Yaru.focus-ring : (checked ? Yaru.accent : Yaru.switch-border);
     background: checked ? (touch.has-hover ? Yaru.accent-hover : Yaru.accent)
-        : (touch.has-hover ? #484848 : #3c3c3c);
+        : (touch.has-hover ? Yaru.switch-hover : Yaru.switch-bg);
     opacity: root.available ? 1.0 : 0.45;
 
     touch := TouchArea {
@@ -285,7 +318,7 @@ export component YaruSlider inherits Rectangle {
         width: root.usable;
         height: 6px;
         border-radius: 3px;
-        background: #3e3e3e;
+        background: Yaru.slider-track;
     }
 
     // Filled progress
@@ -295,7 +328,7 @@ export component YaruSlider inherits Rectangle {
         width: root.usable * root.frac;
         height: 6px;
         border-radius: 3px;
-        background: root.enabled ? Yaru.accent : #666666;
+        background: root.enabled ? Yaru.accent : Yaru.slider-disabled;
     }
 
     // Thumb knob
@@ -307,7 +340,7 @@ export component YaruSlider inherits Rectangle {
         border-radius: 9px;
         background: #ffffff;
         border-width: keys.has-focus ? 2px : 1.5px;
-        border-color: keys.has-focus ? #ffffff : (root.enabled ? Yaru.accent : #666666);
+        border-color: keys.has-focus ? Yaru.focus-ring : (root.enabled ? Yaru.accent : Yaru.slider-disabled);
     }
 
     touch := TouchArea {
@@ -344,7 +377,7 @@ export component ColorSwatch inherits Rectangle {
     height: 30px;
     border-radius: 15px;
     background: root.swatch_color;
-    border-color: selected ? #ffffff : #4a4a4a;
+    border-color: selected ? Yaru.focus-ring : Yaru.control-border;
     border-width: selected ? 2.5px : 1px;
     opacity: root.available ? 1.0 : 0.45;
 
@@ -412,10 +445,11 @@ export component StatTile inherits Rectangle {
 export component ActionRow inherits Rectangle {
     in property <string> title;
     in property <string> subtitle;
-    min-height: 52px;
+    min-height: max(52px, row.preferred-height);
+    preferred-height: max(52px, row.preferred-height);
     background: transparent;
 
-    HorizontalLayout {
+    row := HorizontalLayout {
         padding-left: 16px;
         padding-right: 16px;
         padding-top: 10px;
@@ -432,6 +466,7 @@ export component ActionRow inherits Rectangle {
                 color: Yaru.text;
                 font-size: 13px;
                 font-weight: 500;
+                wrap: word-wrap;
             }
             if root.subtitle != "" : Text {
                 text: root.subtitle;
@@ -476,6 +511,7 @@ export component ControlBlock inherits Rectangle {
                     color: Yaru.text;
                     font-size: 13px;
                     font-weight: 500;
+                    wrap: word-wrap;
                 }
                 if root.subtitle != "" : Text {
                     text: root.subtitle;
@@ -501,10 +537,11 @@ export component Reading inherits Rectangle {
     in property <string> label;
     in property <string> value;
     in property <string> subtitle;
-    min-height: 50px;
+    min-height: max(50px, row.preferred-height);
+    preferred-height: max(50px, row.preferred-height);
     background: transparent;
 
-    HorizontalLayout {
+    row := HorizontalLayout {
         padding-left: 16px;
         padding-right: 16px;
         padding-top: 10px;
@@ -521,6 +558,7 @@ export component Reading inherits Rectangle {
                 color: Yaru.text;
                 font-size: 13px;
                 font-weight: 500;
+                wrap: word-wrap;
             }
             if root.subtitle != "" : Text {
                 text: root.subtitle;
@@ -545,9 +583,9 @@ export component ViewTabButton inherits Rectangle {
     height: 34px;
     min-width: row.min-width;
     border-radius: 8px;
-    background: active ? #363636 : (touch.has-hover ? #2d2d2d : transparent);
+    background: active ? Yaru.tab-active-bg : (touch.has-hover ? Yaru.tab-hover-bg : transparent);
     border-width: active ? 1px : 0px;
-    border-color: active ? #464646 : transparent;
+    border-color: active ? Yaru.tab-active-border : transparent;
 
     touch := TouchArea {
         clicked => { root.clicked(); }
@@ -572,7 +610,7 @@ export component ViewTabButton inherits Rectangle {
 
         Text {
             text: root.text;
-            color: active ? #ffffff : (touch.has-hover ? #e0e0e0 : Yaru.text-dim);
+            color: active ? Yaru.text-strong : (touch.has-hover ? Yaru.text : Yaru.text-dim);
             font-size: 12px;
             font-weight: active ? 600 : 500;
             vertical-alignment: center;
@@ -625,15 +663,15 @@ export component HistoryChart inherits Rectangle {
             Rectangle {
                 height: 76px;
                 horizontal-stretch: 1;
-                background: #1a1a1a;
+                background: Yaru.chart-bg;
                 border-radius: 8px;
                 border-width: 1px;
-                border-color: #303030;
+                border-color: Yaru.chart-border;
 
                 Rectangle {
                     y: parent.height / 2;
                     height: 1px;
-                    background: #282828;
+                    background: Yaru.chart-grid;
                 }
 
                 Path {
@@ -662,6 +700,383 @@ export component HistoryChart inherits Rectangle {
             text: root.peaks;
             color: Yaru.text-dim;
             font-size: 11.5px;
+        }
+    }
+}
+
+component StepMiniButton inherits Rectangle {
+    in property <string> symbol;
+    in property <string> label;
+    in property <bool> available: true;
+    callback clicked();
+
+    width: 22px;
+    height: 22px;
+    border-radius: 6px;
+    border-width: 1px;
+    forward-focus: keys;
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.available;
+    accessible-action-default => { if root.available { root.clicked(); } }
+
+    background: !root.available ? Yaru.control-disabled
+        : (touch.pressed ? Yaru.control-pressed : (touch.has-hover ? Yaru.control-hover : Yaru.control));
+    border-color: keys.has-focus ? Yaru.focus-ring
+        : (!root.available ? Yaru.control-disabled-border : Yaru.control-border);
+    opacity: root.available ? 1.0 : 0.35;
+
+    keys := FocusScope {
+        width: 0px;
+        enabled: root.available;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    touch := TouchArea {
+        enabled: root.available;
+        clicked => { root.clicked(); }
+        mouse-cursor: root.available ? pointer : default;
+    }
+
+    Text {
+        text: root.symbol;
+        color: touch.has-hover && root.available ? Yaru.text-strong : Yaru.text;
+        font-size: 12.5px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component FanPointCell inherits Rectangle {
+    in property <int> point_index;
+    in property <int> temp;
+    in property <int> pwm;
+    in property <color> accent_color: Yaru.accent;
+    in property <bool> can_temp_dec: true;
+    in property <bool> can_temp_inc: true;
+    in property <bool> can_pwm_dec: true;
+    in property <bool> can_pwm_inc: true;
+    in property <bool> enabled: true;
+    callback temp_step(int);
+    callback pwm_step(int);
+
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: Yaru.divider;
+    background: Yaru.bg;
+    horizontal-stretch: 1;
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 5px;
+
+        HorizontalLayout {
+            spacing: 5px;
+            alignment: space-between;
+            Text {
+                text: "P" + (root.point_index + 1);
+                color: Yaru.text-dim;
+                font-size: 10.5px;
+                font-weight: 700;
+                vertical-alignment: center;
+            }
+            VerticalLayout {
+                alignment: center;
+                horizontal-stretch: 1;
+                Rectangle {
+                    height: 4px;
+                    border-radius: 2px;
+                    background: Yaru.slider-track;
+                    Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: parent.width * clamp(root.pwm, 0, 100) / 100;
+                        height: parent.height;
+                        border-radius: 2px;
+                        background: root.accent_color;
+                    }
+                }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: space-between;
+            StepMiniButton {
+                symbol: "-";
+                label: "Decrease point " + (root.point_index + 1) + " temperature";
+                available: root.enabled && root.can_temp_dec;
+                clicked => { root.temp_step(-2); }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.temp + "°";
+                color: Yaru.text;
+                font-size: 11px;
+                font-weight: 700;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            StepMiniButton {
+                symbol: "+";
+                label: "Increase point " + (root.point_index + 1) + " temperature";
+                available: root.enabled && root.can_temp_inc;
+                clicked => { root.temp_step(2); }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: space-between;
+            StepMiniButton {
+                symbol: "-";
+                label: "Decrease point " + (root.point_index + 1) + " fan duty";
+                available: root.enabled && root.can_pwm_dec;
+                clicked => { root.pwm_step(-5); }
+            }
+            Text {
+                horizontal-stretch: 1;
+                text: root.pwm + "%";
+                color: Yaru.text-dim;
+                font-size: 11px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+            StepMiniButton {
+                symbol: "+";
+                label: "Increase point " + (root.point_index + 1) + " fan duty";
+                available: root.enabled && root.can_pwm_inc;
+                clicked => { root.pwm_step(5); }
+            }
+        }
+    }
+}
+
+export component FanCurveGrid inherits VerticalLayout {
+    in property <string> fan_title;
+    in property <string> subtitle;
+    in property <color> accent_color: Yaru.accent;
+    in property <[int]> temps;
+    in property <[int]> pwms;
+    in property <bool> enabled: true;
+
+    private property <int> t0: 40;
+    private property <int> t1: 48;
+    private property <int> t2: 56;
+    private property <int> t3: 64;
+    private property <int> t4: 72;
+    private property <int> t5: 80;
+    private property <int> t6: 88;
+    private property <int> t7: 96;
+
+    private property <int> p0: 0;
+    private property <int> p1: 15;
+    private property <int> p2: 28;
+    private property <int> p3: 42;
+    private property <int> p4: 58;
+    private property <int> p5: 74;
+    private property <int> p6: 90;
+    private property <int> p7: 100;
+
+    in-out property <bool> dirty: false;
+    private property <bool> awaiting_apply: false;
+    out property <[int]> edited_temps: [root.t0, root.t1, root.t2, root.t3, root.t4, root.t5, root.t6, root.t7];
+    out property <[int]> edited_pwms: [root.p0, root.p1, root.p2, root.p3, root.p4, root.p5, root.p6, root.p7];
+
+    pure function get_t(i: int) -> int {
+        if i == 0 { return root.t0; }
+        if i == 1 { return root.t1; }
+        if i == 2 { return root.t2; }
+        if i == 3 { return root.t3; }
+        if i == 4 { return root.t4; }
+        if i == 5 { return root.t5; }
+        if i == 6 { return root.t6; }
+        return root.t7;
+    }
+
+    function set_t(i: int, v: int) {
+        if i == 0 { root.t0 = v; }
+        else if i == 1 { root.t1 = v; }
+        else if i == 2 { root.t2 = v; }
+        else if i == 3 { root.t3 = v; }
+        else if i == 4 { root.t4 = v; }
+        else if i == 5 { root.t5 = v; }
+        else if i == 6 { root.t6 = v; }
+        else { root.t7 = v; }
+    }
+
+    pure function get_p(i: int) -> int {
+        if i == 0 { return root.p0; }
+        if i == 1 { return root.p1; }
+        if i == 2 { return root.p2; }
+        if i == 3 { return root.p3; }
+        if i == 4 { return root.p4; }
+        if i == 5 { return root.p5; }
+        if i == 6 { return root.p6; }
+        return root.p7;
+    }
+
+    function set_p(i: int, v: int) {
+        if i == 0 { root.p0 = v; }
+        else if i == 1 { root.p1 = v; }
+        else if i == 2 { root.p2 = v; }
+        else if i == 3 { root.p3 = v; }
+        else if i == 4 { root.p4 = v; }
+        else if i == 5 { root.p5 = v; }
+        else if i == 6 { root.p6 = v; }
+        else { root.p7 = v; }
+    }
+
+    function step_t(i: int, delta: int) {
+        let raw_lo = i == 0 ? 30 : root.get_t(i - 1);
+        let raw_hi = i == 7 ? 105 : root.get_t(i + 1);
+        let lo = min(raw_lo, raw_hi);
+        let hi = max(raw_lo, raw_hi);
+        root.set_t(i, clamp(root.get_t(i) + delta, lo, hi));
+        root.awaiting_apply = false;
+        root.dirty = true;
+    }
+
+    function step_p(i: int, delta: int) {
+        let raw_lo = i == 0 ? 0 : root.get_p(i - 1);
+        let raw_hi = i == 7 ? 100 : root.get_p(i + 1);
+        let lo = min(raw_lo, raw_hi);
+        let hi = max(raw_lo, raw_hi);
+        root.set_p(i, clamp(root.get_p(i) + delta, lo, hi));
+        root.awaiting_apply = false;
+        root.dirty = true;
+    }
+
+    function sync_from_props() {
+        if root.temps.length >= 8 {
+            root.t0 = root.temps[0];
+            root.t1 = root.temps[1];
+            root.t2 = root.temps[2];
+            root.t3 = root.temps[3];
+            root.t4 = root.temps[4];
+            root.t5 = root.temps[5];
+            root.t6 = root.temps[6];
+            root.t7 = root.temps[7];
+        }
+        if root.pwms.length >= 8 {
+            root.p0 = root.pwms[0];
+            root.p1 = root.pwms[1];
+            root.p2 = root.pwms[2];
+            root.p3 = root.pwms[3];
+            root.p4 = root.pwms[4];
+            root.p5 = root.pwms[5];
+            root.p6 = root.pwms[6];
+            root.p7 = root.pwms[7];
+        }
+    }
+
+    public function mark_pending() {
+        root.awaiting_apply = true;
+    }
+
+    public function reset_dirty() {
+        root.awaiting_apply = false;
+        root.dirty = false;
+        root.sync_from_props();
+    }
+
+    init => { root.sync_from_props(); }
+    changed temps => {
+        if !root.dirty || root.awaiting_apply {
+            root.awaiting_apply = false;
+            root.dirty = false;
+            root.sync_from_props();
+        }
+    }
+    changed pwms => {
+        if !root.dirty || root.awaiting_apply {
+            root.awaiting_apply = false;
+            root.dirty = false;
+            root.sync_from_props();
+        }
+    }
+    changed enabled => {
+        if root.enabled && root.awaiting_apply {
+            root.awaiting_apply = false;
+        }
+    }
+
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+    spacing: 8px;
+
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: space-between;
+        HorizontalLayout {
+            spacing: 6px;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: root.accent_color;
+                }
+            }
+            Text {
+                text: root.fan_title;
+                color: Yaru.text;
+                font-size: 13px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+        }
+        Text {
+            text: root.dirty ? "Modified · °C / %" : (root.subtitle != "" ? root.subtitle : "Temp (°C) / Duty (%)");
+            color: root.dirty ? Yaru.accent : Yaru.text-dim;
+            font-size: 11px;
+            font-weight: root.dirty ? 600 : 400;
+            vertical-alignment: center;
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 6px;
+        for idx in [0, 1, 2, 3] : FanPointCell {
+            point_index: idx;
+            temp: root.get_t(idx);
+            pwm: root.get_p(idx);
+            accent_color: root.accent_color;
+            enabled: root.enabled;
+            can_temp_dec: root.get_t(idx) > (idx == 0 ? 30 : root.get_t(idx - 1));
+            can_temp_inc: root.get_t(idx) < (idx == 7 ? 105 : root.get_t(idx + 1));
+            can_pwm_dec: root.get_p(idx) > (idx == 0 ? 0 : root.get_p(idx - 1));
+            can_pwm_inc: root.get_p(idx) < (idx == 7 ? 100 : root.get_p(idx + 1));
+            temp_step(d) => { root.step_t(idx, d); }
+            pwm_step(d) => { root.step_p(idx, d); }
+        }
+    }
+
+    HorizontalLayout {
+        spacing: 6px;
+        for idx in [4, 5, 6, 7] : FanPointCell {
+            point_index: idx;
+            temp: root.get_t(idx);
+            pwm: root.get_p(idx);
+            accent_color: root.accent_color;
+            enabled: root.enabled;
+            can_temp_dec: root.get_t(idx) > (idx == 0 ? 30 : root.get_t(idx - 1));
+            can_temp_inc: root.get_t(idx) < (idx == 7 ? 105 : root.get_t(idx + 1));
+            can_pwm_dec: root.get_p(idx) > (idx == 0 ? 0 : root.get_p(idx - 1));
+            can_pwm_inc: root.get_p(idx) < (idx == 7 ? 100 : root.get_p(idx + 1));
+            temp_step(d) => { root.step_t(idx, d); }
+            pwm_step(d) => { root.step_p(idx, d); }
         }
     }
 }
