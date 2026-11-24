@@ -12,6 +12,10 @@ const WINDOW: Duration = Duration::from_secs(120);
 const MAX_GAP: Duration = Duration::from_secs(4);
 const MAX_SAMPLES: usize = 121;
 
+pub fn is_ac_online() -> Option<bool> {
+    BatteryScanner::new().ac_online()
+}
+
 #[derive(Default)]
 struct History {
     samples: VecDeque<(Instant, Sensors)>,
@@ -98,7 +102,7 @@ pub fn run(requests: Receiver<()>, ui: Weak<AppWindow>) {
         let frame = Frame {
             sensors,
             battery: battery.read_battery(),
-            ac_online: battery.ac_online(),
+            ac_online: is_ac_online(),
             nvidia: NvidiaRuntime::read(),
             temperatures: [
                 history.series(now, 120.0, |s| s.cpu_temp),
@@ -249,6 +253,8 @@ fn thermal_status(sensors: &Sensors) -> (SharedString, bool) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use tempfile::tempdir;
 
     #[test]
     fn history_expires_samples_and_leaves_gaps() {
@@ -268,5 +274,23 @@ mod tests {
         assert_eq!(chart.path.matches('M').count(), 2);
         assert_eq!(chart.path.matches('L').count(), 0);
         assert_eq!(history.samples.len(), 3);
+    }
+
+    #[test]
+    fn ac_online_reads_mains_sysfs_state() {
+        let dir = tempdir().unwrap();
+        let scanner = BatteryScanner::at(dir.path());
+        assert_eq!(scanner.ac_online(), None);
+
+        let ac = dir.path().join("ACAD");
+        fs::create_dir(&ac).unwrap();
+        fs::write(ac.join("type"), "Mains\n").unwrap();
+        fs::write(ac.join("online"), "1\n").unwrap();
+        assert_eq!(scanner.ac_online(), Some(true));
+
+        fs::write(ac.join("online"), "0\n").unwrap();
+        assert_eq!(scanner.ac_online(), Some(false));
+
+        let _ = is_ac_online();
     }
 }
