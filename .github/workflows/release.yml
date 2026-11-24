@@ -1,0 +1,111 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (optional; defaults to pushed tag ref)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build & Package Release (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system build & packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            pkg-config \
+            libfontconfig1-dev \
+            dbus \
+            appstream \
+            desktop-file-utils
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-deb
+        uses: taiki-e/install-action@cargo-deb
+
+      - name: Cache Cargo registry & build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Validate packaging metadata
+        run: |
+          desktop-file-validate packaging/tuf-helper.desktop
+          appstreamcli validate --no-net packaging/io.github.nishantharkut.TufHelper.metainfo.xml
+
+      - name: Build release workspace
+        run: cargo build --release --workspace --locked
+
+      - name: Strip release binary
+        run: strip -s target/release/tuf-gui
+
+      - name: Build Debian package
+        run: |
+          mkdir -p dist
+          cargo deb -p tuf-gui --no-build --no-strip -o dist/
+          dpkg-deb --info dist/*.deb
+          dpkg-deb --contents dist/*.deb
+
+      - name: Package portable tarball
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ -n "$INPUT_TAG" ]]; then
+            VERSION="${INPUT_TAG#v}"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -n 1)"
+          fi
+          ARCH="$(uname -m)"
+          STAGE_NAME="tuf-helper-${VERSION}-linux-${ARCH}"
+          STAGE_DIR="$(mktemp -d)"
+          mkdir -p "$STAGE_DIR/$STAGE_NAME" dist
+          install -m 0755 target/release/tuf-gui "$STAGE_DIR/$STAGE_NAME/tuf-gui"
+          install -m 0644 assets/tuf-helper.svg "$STAGE_DIR/$STAGE_NAME/tuf-helper.svg"
+          install -m 0644 packaging/tuf-helper.desktop "$STAGE_DIR/$STAGE_NAME/tuf-helper.desktop"
+          install -m 0644 LICENSE "$STAGE_DIR/$STAGE_NAME/LICENSE"
+          install -m 0644 README.md "$STAGE_DIR/$STAGE_NAME/README.md"
+          tar -C "$STAGE_DIR" -czf "dist/${STAGE_NAME}.tar.gz" "$STAGE_NAME"
+          rm -rf "$STAGE_DIR"
+
+      - name: Compute SHA256SUMS
+        run: |
+          cd dist
+          sha256sum *.deb *.tar.gz > SHA256SUMS
+          cat SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      - name: Upload release build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tuf-helper-release-assets
+          path: dist/*
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*.deb
+            dist/*.tar.gz
+            dist/SHA256SUMS

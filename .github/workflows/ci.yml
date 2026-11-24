@@ -24,18 +24,30 @@ jobs:
             build-essential \
             pkg-config \
             libfontconfig1-dev \
-            dbus
+            dbus \
+            appstream \
+            desktop-file-utils
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
 
       - name: Cache Cargo registry & build artifacts
         uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting (advisory)
+        continue-on-error: true
+        run: cargo fmt --all -- --check
 
       - name: Check workspace with warnings denied
         env:
           RUSTFLAGS: "-D warnings"
         run: cargo check --workspace --all-targets --locked
+
+      - name: Run Clippy lints (advisory)
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run unit and integration tests
         run: cargo test --workspace --all-targets --locked
@@ -46,5 +58,8 @@ jobs:
       - name: Build release binary
         run: cargo build --release --workspace --locked
 
-      - name: Validate installer script syntax
-        run: bash -n scripts/install.sh
+      - name: Validate installer script & packaging metadata
+        run: |
+          bash -n scripts/install.sh
+          desktop-file-validate packaging/tuf-helper.desktop
+          appstreamcli validate --no-net packaging/io.github.nishantharkut.TufHelper.metainfo.xml
