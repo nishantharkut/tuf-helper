@@ -45,10 +45,9 @@ jobs:
       - name: Cache Cargo registry & build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Validate packaging metadata
-        run: |
-          desktop-file-validate packaging/tuf-helper.desktop
-          appstreamcli validate --no-net packaging/io.github.nishantharkut.TufHelper.metainfo.xml
+      - name: Validate desktop entry
+        # AppStream 1.0 metainfo validation runs in ci.yml (Ubuntu 24.04); Ubuntu 22.04 ships appstream 0.15.
+        run: desktop-file-validate packaging/tuf-helper.desktop
 
       - name: Build release workspace
         run: cargo build --release --workspace --locked
