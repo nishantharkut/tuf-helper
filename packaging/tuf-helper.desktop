@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=TUF-Helper
+GenericName=ASUS Laptop & Monitor Control
+Comment=Manage ASUS TUF/ROG power profiles, fans, battery, lighting, and DDC/CI external displays
+Exec=tuf-gui
+Icon=tuf-helper
+StartupWMClass=tuf-helper
+Terminal=false
+Categories=Settings;HardwareSettings;
+Keywords=ASUS;TUF;ROG;Battery;Cooling;Fans;Keyboard;Monitor;DDC;Wayland;

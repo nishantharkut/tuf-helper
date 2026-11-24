@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an improvement for ASUS hardware tuning, DDC/CI support, or UI workflow
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What hardware workflow or control are you trying to manage cleanly on Linux?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Target hardware & desktop environment
+      placeholder: e.g. ASUS TUF F15, KDE Plasma 6 / GNOME Wayland

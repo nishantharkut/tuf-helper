@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: DDC/CI & Display Setup Guide
+    url: https://github.com/nishantharkut/tuf-helper/blob/main/docs/DISPLAY_AND_DDCCI.md
+    about: Check I2C permissions, monitor OSD settings, and Wayland mirror mode behavior first.
