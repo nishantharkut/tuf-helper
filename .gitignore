@@ -1,0 +1,13 @@
+# Rust build outputs and editor backup files
+/target/
+**/*.rs.bk
+
+# Scratch images and temporary files
+*.ppm
+*.tmp
+
+# OS and IDE files
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

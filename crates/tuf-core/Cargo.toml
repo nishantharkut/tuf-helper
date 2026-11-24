@@ -1,0 +1,18 @@
+[package]
+name = "tuf-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "../../README.md"
+description = "Core hardware abstraction layer for ASUS TUF & ROG laptops and DDC/CI monitors on Linux"
+
+[dependencies]
+zbus = { version = "5", features = ["blocking-api"] }
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
