@@ -13,28 +13,24 @@ sudo apt update
 sudo apt install -y build-essential pkg-config libfontconfig1-dev dbus appstream desktop-file-utils ddcutil
 ```
 
-Ensure Rust (`cargo` and `rustc`) is available on `PATH` (install `rustfmt` and `clippy` as well if running advisory lint checks locally).
+Ensure Rust (`cargo` and `rustc`) is available on `PATH` along with `rustfmt` and `clippy`.
 
 ### Standard Checks & CI Gates
 
-Strict blocking checks enforced by [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+Strict blocking checks enforced by [`.github/workflows/ci.yml`](.github/workflows/ci.yml) on every pull request and push to `main`:
 
 ```sh
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
 RUSTFLAGS="-D warnings" cargo check --workspace --all-targets --locked
 cargo test --workspace --all-targets --locked
 cargo doc --workspace --no-deps --locked
-cargo build --release --workspace --locked
 bash -n scripts/install.sh
 desktop-file-validate packaging/tuf-helper.desktop
 appstreamcli validate --no-net packaging/io.github.nishantharkut.TufHelper.metainfo.xml
 ```
 
-Advisory lint and formatting checks (`continue-on-error: true` in CI):
-
-```sh
-cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-```
+Release binary verification (`cargo build --release --workspace --locked`) additionally runs on `main` pushes and tagged releases in [`.github/workflows/release.yml`](.github/workflows/release.yml).
 
 Formatting follows [`rustfmt.toml`](rustfmt.toml) (`edition = "2021"`, `max_width = 100`) and [`.editorconfig`](.editorconfig).
 

@@ -44,7 +44,7 @@
 </table>
 
 <details>
-<summary>View individual tab screenshots (Overview, Cooling Telemetry, Display Controls, Calibration)</summary>
+<summary>View individual tab screenshots (Overview, Cooling Telemetry, Display Controls, Battery Light Theme)</summary>
 <br />
 <table>
   <tr>
@@ -61,8 +61,8 @@
       <sub><strong>Display Hardware</strong></sub>
     </td>
     <td align="center" width="25%">
-      <img src="docs/media/display-calibration.png" alt="Color calibration and orientation controls" width="100%" /><br />
-      <sub><strong>Calibration &amp; Audio</strong></sub>
+      <img src="docs/media/battery-light.png" alt="Battery charge limit and AC/Battery automation in Light theme" width="100%" /><br />
+      <sub><strong>Battery (Light Theme)</strong></sub>
     </td>
   </tr>
 </table>
@@ -192,6 +192,17 @@ When an instance of `tuf-gui` is already running, shortcut commands invoke `Show
 
 ---
 
+## Tested Hardware Compatibility
+
+| Laptop / Monitor | Distro / Compositor | `asusd` / Kernel | Verified Scope |
+| --- | --- | --- | --- |
+| **ASUS TUF Gaming A15 (`ASUS-TUF-Laptop`)** | Ubuntu 24.04 LTS (GNOME Wayland) | `asusd` | Profiles, 80%/100% battery charge limit, Aura RGB, custom 8-point CPU/GPU fan curves, SPPT/FPPT/Dynamic Boost, AC/Battery auto-switching |
+| **Lenovo `MCCS-Monitor`** (`HDMI-1` / `/dev/i2c-*`) | Ubuntu 24.04 LTS (`i2c-dev`) | `MCCS v2.2` | Brightness (`0x10`), Contrast (`0x12`), Color Preset (`0x14`), Input Source (`0x60`), Scaling (`0x86`), 100 Hz refresh switching |
+
+Using a different ASUS TUF / ROG laptop or DDC/CI monitor? Open a [Hardware Compatibility report](https://github.com/nishantharkut/tuf-helper/issues/new/choose) or share your `cargo run --locked -p tuf-core --example test_hw` output in [Discussions](https://github.com/nishantharkut/tuf-helper/discussions).
+
+---
+
 ## Verification
 
 All tests run offline against synthetic sysfs trees (`crates/tuf-core/tests/safety.rs`), isolated private `dbus-daemon` buses (`crates/tuf-core/src/dbus/tests.rs`), and headless Slint tests (`crates/tuf-gui`) — zero host hardware mutations occur during test runs:
@@ -202,7 +213,7 @@ cargo test --workspace --all-targets --locked
 cargo doc --workspace --no-deps --locked
 ```
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for blocking CI gates (`cargo build --release`, `desktop-file-validate`, `appstreamcli`) and advisory `cargo fmt` / `cargo clippy` checks.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for all blocking CI gates (`cargo fmt`, `cargo clippy`, `desktop-file-validate`, `appstreamcli`).
 
 > [!TIP]
 > In GNOME Display Settings, **Mirror** mode locks independent per-display refresh rates at the compositor level. Use **Join Displays** to switch laptop (`eDP`) and external monitor (`HDMI`/`DP`) refresh rates separately or to use opt-in AC/Battery auto-refresh.
