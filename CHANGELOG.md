@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-25
+
 ### Added
 - **CLI & `local.TufHelper` D-Bus Shortcut Actions (`--toggle`, `--cycle-profile`, `--step-monitor-brightness <DELTA>`):** Supports GNOME custom keyboard shortcuts by invoking `Toggle`, `CycleProfile`, and `StepMonitorBrightness` over the session bus when running (`execute_blocking` with `12 s` worker timeout), falling back directly to `tuf-core` only when no instance is active.
 - **Reactive D-Bus Signal Pipeline (`signals.rs`):** Subscribes to `asusd` (`/xyz/ljones` `PropertiesChanged`), `UPower` (`/org/freedesktop/UPower` `PropertiesChanged`), GNOME Mutter (`MonitorsChanged` and `/org/gnome/Mutter/DisplayConfig` `PropertiesChanged`), and `org.freedesktop.portal.Settings` (`SettingChanged`), debouncing signal bursts (`180 ms` window, `500 ms` max cap) and reconnecting with `500 ms` to `10 s` exponential backoff.
