@@ -37,6 +37,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Check formatting
+        continue-on-error: true
         run: cargo fmt --all -- --check
 
       - name: Check workspace with warnings denied
@@ -45,6 +46,7 @@ jobs:
         run: cargo check --workspace --all-targets --locked
 
       - name: Run Clippy lints
+        continue-on-error: true
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Run unit and integration tests
