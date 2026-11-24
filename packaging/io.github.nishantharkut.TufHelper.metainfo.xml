@@ -30,19 +30,19 @@
   <screenshots>
     <screenshot type="default">
       <caption>Overview tab showing power profile, GPU mode, lighting, and battery charge limit</caption>
-      <image type="source" width="580" height="1115">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/overview.png</image>
+      <image type="source" width="620" height="780">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/overview.png</image>
     </screenshot>
     <screenshot>
-      <caption>Cooling tab with live sysfs temperature and fan telemetry</caption>
-      <image type="source" width="580" height="1080">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/cooling.png</image>
+      <caption>Cooling tab with live sysfs temperature, fan telemetry, and custom 8-point curves</caption>
+      <image type="source" width="620" height="780">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/cooling.png</image>
     </screenshot>
     <screenshot>
-      <caption>Display tab with dual-screen brightness, contrast, and refresh-rate controls</caption>
-      <image type="source" width="580" height="1015">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/display-controls.png</image>
+      <caption>Display tab with multi-monitor DDC/CI, auto-refresh, and overdrive controls</caption>
+      <image type="source" width="620" height="780">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/display-controls.png</image>
     </screenshot>
     <screenshot>
-      <caption>Display calibration tab with color presets, RGB gain, orientation, and audio volume</caption>
-      <image type="source" width="580" height="1030">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/display-calibration.png</image>
+      <caption>Battery tab in Yaru Light theme with One-Shot 100% charge and AC/Battery automation</caption>
+      <image type="source" width="620" height="780">https://raw.githubusercontent.com/nishantharkut/tuf-helper/main/docs/media/battery-light.png</image>
     </screenshot>
   </screenshots>
   <content_rating type="oars-1.1" />
@@ -61,6 +61,12 @@
     <keyword>Wayland</keyword>
   </keywords>
   <releases>
+    <release version="0.2.0" date="2026-11-25">
+      <url type="details">https://github.com/nishantharkut/tuf-helper/releases/tag/v0.2.0</url>
+      <description>
+        <p>Adds multi-monitor MCCS 0xF3 discovery, VCP 0x60 input switching and 0x86 scaling, interactive 8-point CPU/GPU fan curves, AC/battery automation, One-Shot 100% charge, reactive D-Bus signals, CLI/D-Bus shortcuts, and GNOME Yaru Light/Dark theme sync.</p>
+      </description>
+    </release>
     <release version="0.1.0" date="2026-11-25">
       <url type="details">https://github.com/nishantharkut/tuf-helper/releases/tag/v0.1.0</url>
       <description>

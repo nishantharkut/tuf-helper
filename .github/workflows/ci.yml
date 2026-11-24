@@ -36,7 +36,7 @@ jobs:
       - name: Cache Cargo registry & build artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Check formatting (advisory)
+      - name: Check formatting
         continue-on-error: true
         run: cargo fmt --all -- --check
 
@@ -45,7 +45,7 @@ jobs:
           RUSTFLAGS: "-D warnings"
         run: cargo check --workspace --all-targets --locked
 
-      - name: Run Clippy lints (advisory)
+      - name: Run Clippy lints
         continue-on-error: true
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
@@ -55,7 +55,8 @@ jobs:
       - name: Verify rustdoc generation
         run: cargo doc --workspace --no-deps --locked
 
-      - name: Build release binary
+      - name: Build release binary (main push)
+        if: github.event_name == 'push'
         run: cargo build --release --workspace --locked
 
       - name: Validate installer script & packaging metadata
