@@ -1,8 +1,8 @@
-// Ubuntu 24 (Yaru / Libadwaita + COSMIC Dark) Main Application Window
+// Ubuntu 24 (Yaru / Libadwaita + COSMIC) Main Application Window
 
-import { ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { ComboBox, LineEdit, Palette, ScrollView } from "std-widgets.slint";
 import {
-    ActionRow, ColorSwatch, ControlBlock, HistoryChart, PreferencesCard,
+    ActionRow, ColorSwatch, ControlBlock, FanCurveGrid, HistoryChart, PreferencesCard,
     PreferencesGroupTitle, Reading, RowDivider, SegmentButton, ToggleSwitch,
     ValueBadge, ViewTabButton, Yaru, YaruSlider
 } from "components.slint";
@@ -105,8 +105,61 @@ export component AppWindow inherits Window {
     in-out property <bool> static_color_available;
     in-out property <string> active_color;
     in-out property <bool> autostart_enabled;
+    in-out property <bool> dark_mode <=> Yaru.dark-mode;
+
+    // Issue #3: Battery & AC/Battery automation
+    in-out property <bool> one_shot_charge_available: false;
+    in-out property <bool> auto_profile_available: false;
+    in-out property <bool> change_profile_on_ac: false;
+    in-out property <bool> change_profile_on_battery: false;
+    in-out property <int> profile_on_ac: 0;
+    in-out property <int> profile_on_battery: 2;
+    in-out property <bool> disable_nvidia_on_battery: false;
+    in-out property <bool> linked_epp: false;
+
+    // Issue #3: Laptop Auto-Refresh + Extended Armoury TDP
+    in-out property <bool> auto_refresh_enabled: false;
+    in-out property <bool> sppt_available: false;
+    in-out property <string> sppt_watts: "Unavailable";
+    in-out property <string> sppt_range;
+    in-out property <bool> fppt_available: false;
+    in-out property <string> fppt_watts: "Unavailable";
+    in-out property <string> fppt_range;
+    in-out property <bool> nv_boost_available: false;
+    in-out property <string> nv_boost_watts: "Unavailable";
+    in-out property <string> nv_boost_range;
+
+    // Issue #5: Interactive 8-Point Fan Curves
+    in-out property <bool> fan_curves_available: false;
+    in-out property <[int]> cpu_curve_temps;
+    in-out property <[int]> cpu_curve_pwms;
+    in-out property <[int]> gpu_curve_temps;
+    in-out property <[int]> gpu_curve_pwms;
+
+    // Issue #4: Multi-Monitor & MCCS 0xF3/0x60/0x86
+    in-out property <int> external_display_count: 0;
+    in-out property <int> selected_external_index: 0;
+    in-out property <string> selected_external_connector;
+    in-out property <[string]> external_display_names;
+    in-out property <[int]> display_preset_codes;
+    in-out property <[string]> display_preset_labels;
+    in-out property <int> display_color_preset_raw: -1;
+    in-out property <[int]> display_input_codes;
+    in-out property <[string]> display_input_labels;
+    in-out property <int> display_input_current: -1;
+    in-out property <[int]> display_scaling_codes;
+    in-out property <[string]> display_scaling_labels;
+    in-out property <int> display_scaling_current: -1;
+
     private property <int> tab: 0;
     private property <int> detail_tab: 1;
+    private property <bool> sleep_armed: false;
+    private property <bool> input_armed: false;
+    private property <int> pending_input_code: -1;
+    private property <string> pending_input_label;
+    private property <int> ext_combo_idx: max(0, root.selected_external_index);
+    private property <int> input_combo_idx: max(0, root.find_code_index(root.display_input_codes, root.display_input_current));
+    private property <int> scaling_combo_idx: max(0, root.find_code_index(root.display_scaling_codes, root.display_scaling_current));
     private property <float> builtin_bri_draft: max(5, root.builtin_brightness);
     private property <float> display_vol_draft: root.display_volume;
     private property <float> display_bri_draft: max(0, root.display_brightness);
@@ -115,6 +168,30 @@ export component AppWindow inherits Window {
     private property <float> rgb_g_draft: max(0, min(100, root.display_rgb_g));
     private property <float> rgb_b_draft: max(0, min(100, root.display_rgb_b));
 
+    init => {
+        Palette.color-scheme = root.dark_mode ? ColorScheme.dark : ColorScheme.light;
+    }
+    changed dark_mode => {
+        Palette.color-scheme = root.dark_mode ? ColorScheme.dark : ColorScheme.light;
+    }
+    changed selected_external_index => {
+        root.ext_combo_idx = max(0, root.selected_external_index);
+        root.input_armed = false;
+    }
+    changed display_input_current => {
+        root.input_combo_idx = max(0, root.find_code_index(root.display_input_codes, root.display_input_current));
+        root.input_armed = false;
+    }
+    changed display_input_codes => {
+        root.input_combo_idx = max(0, root.find_code_index(root.display_input_codes, root.display_input_current));
+        root.input_armed = false;
+    }
+    changed display_scaling_current => {
+        root.scaling_combo_idx = max(0, root.find_code_index(root.display_scaling_codes, root.display_scaling_current));
+    }
+    changed display_scaling_codes => {
+        root.scaling_combo_idx = max(0, root.find_code_index(root.display_scaling_codes, root.display_scaling_current));
+    }
     changed builtin_brightness => {
         if root.builtin_brightness >= 0 {
             root.builtin_bri_draft = max(5, min(100, root.builtin_brightness));
@@ -133,8 +210,22 @@ export component AppWindow inherits Window {
 
     function open_page(index: int) {
         if index > 0 { root.detail_tab = index; }
+        root.sleep_armed = false;
+        root.input_armed = false;
         root.tab = index;
         page.content-y = 0px;
+    }
+
+    Timer {
+        interval: 4s;
+        running: root.sleep_armed;
+        triggered => { root.sleep_armed = false; }
+    }
+
+    Timer {
+        interval: 4s;
+        running: root.input_armed;
+        triggered => { root.input_armed = false; }
     }
 
     callback tuning_requested(TuningAction, int);
@@ -154,9 +245,52 @@ export component AppWindow inherits Window {
     callback display_mute_toggled(bool);
     callback display_sleep_requested();
     callback display_orientation_changed(int);
+    callback one_shot_charge_requested();
+    callback ac_automation_changed(bool, int);
+    callback battery_automation_changed(bool, int);
+    callback disable_nvidia_on_battery_changed(bool);
+    callback linked_epp_changed(bool);
+    callback auto_refresh_toggled(bool);
+    callback sppt_limit_requested(int);
+    callback fppt_limit_requested(int);
+    callback nv_boost_requested(int);
+    callback custom_fan_curves_applied([int], [int], [int], [int]);
+    callback fan_curves_reset_requested();
+    callback external_display_selected(int);
+    callback display_color_preset_raw_changed(int);
+    callback display_input_changed(int);
+    callback display_scaling_changed(int);
 
     function supported(mask: int, bit: int) -> bool {
         return mod(floor(mask / bit), 2) == 1;
+    }
+
+    pure function find_code_index(codes: [int], target: int) -> int {
+        if 0 < codes.length && codes[0] == target { return 0; }
+        if 1 < codes.length && codes[1] == target { return 1; }
+        if 2 < codes.length && codes[2] == target { return 2; }
+        if 3 < codes.length && codes[3] == target { return 3; }
+        if 4 < codes.length && codes[4] == target { return 4; }
+        if 5 < codes.length && codes[5] == target { return 5; }
+        if 6 < codes.length && codes[6] == target { return 6; }
+        if 7 < codes.length && codes[7] == target { return 7; }
+        if 8 < codes.length && codes[8] == target { return 8; }
+        if 9 < codes.length && codes[9] == target { return 9; }
+        if 10 < codes.length && codes[10] == target { return 10; }
+        if 11 < codes.length && codes[11] == target { return 11; }
+        if 12 < codes.length && codes[12] == target { return 12; }
+        if 13 < codes.length && codes[13] == target { return 13; }
+        if 14 < codes.length && codes[14] == target { return 14; }
+        if 15 < codes.length && codes[15] == target { return 15; }
+        return -1;
+    }
+
+    pure function label_for_code(codes: [int], labels: [string], current: int, fallback: string) -> string {
+        let idx = root.find_code_index(codes, current);
+        if idx >= 0 && idx < labels.length {
+            return labels[idx];
+        }
+        return fallback;
     }
 
     VerticalLayout {
@@ -214,6 +348,18 @@ export component AppWindow inherits Window {
                             alignment: center;
                             SegmentButton {
                                 compact: true;
+                                text: root.dark_mode ? "Light" : "Dark";
+                                accessible_text: root.dark_mode ? "Switch to light theme" : "Switch to dark theme";
+                                clicked => {
+                                    root.dark_mode = !root.dark_mode;
+                                    Palette.color-scheme = root.dark_mode ? ColorScheme.dark : ColorScheme.light;
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            SegmentButton {
+                                compact: true;
                                 text: root.refreshing ? "Refreshing…" : "Refresh";
                                 available: !root.busy && !root.refreshing;
                                 clicked => { root.refresh_requested(); }
@@ -234,9 +380,9 @@ export component AppWindow inherits Window {
                 Rectangle {
                     height: 40px;
                     border-radius: 10px;
-                    background: #1b1b1b;
+                    background: Yaru.tab-tray-bg;
                     border-width: 1px;
-                    border-color: #303030;
+                    border-color: Yaru.tab-tray-border;
 
                     HorizontalLayout {
                         padding: 3px;
@@ -253,7 +399,7 @@ export component AppWindow inherits Window {
         }
 
         // Header bottom hairline separator
-        Rectangle { height: 1px; background: #323232; }
+        Rectangle { height: 1px; background: Yaru.header-border; }
 
         // SCROLLABLE CLAMPED BODY
         page := ScrollView {
@@ -485,7 +631,72 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            if root.ppt_available || root.gpu_range != "" : VerticalLayout {
+                            if root.fan_curves_available : VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Custom 8-Point Fan Curves";
+                                    description: root.ppt_enabled
+                                        ? "Restore Default CPU Power Tuning below before editing custom fan curves"
+                                        : "Monotonic temperature (30–105°C) and fan duty (0–100%) for active profile";
+                                }
+                                PreferencesCard {
+                                    cpu_grid := FanCurveGrid {
+                                        fan_title: "CPU Fan Curve";
+                                        subtitle: "Temp (°C) / Duty (%)";
+                                        accent_color: Yaru.blue;
+                                        temps: root.cpu_curve_temps;
+                                        pwms: root.cpu_curve_pwms;
+                                        enabled: !root.busy && root.fan_curves_available && !root.ppt_enabled;
+                                    }
+                                    RowDivider {}
+                                    gpu_grid := FanCurveGrid {
+                                        fan_title: "GPU Fan Curve";
+                                        subtitle: "Temp (°C) / Duty (%)";
+                                        accent_color: Yaru.accent;
+                                        temps: root.gpu_curve_temps;
+                                        pwms: root.gpu_curve_pwms;
+                                        enabled: !root.busy && root.fan_curves_available && !root.ppt_enabled;
+                                    }
+                                    RowDivider {}
+                                    HorizontalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 8px;
+                                        SegmentButton {
+                                            horizontal-stretch: 1;
+                                            compact: true;
+                                            text: "Reset to Defaults";
+                                            available: !root.busy && root.fan_curves_available && !root.ppt_enabled;
+                                            clicked => {
+                                                cpu_grid.reset_dirty();
+                                                gpu_grid.reset_dirty();
+                                                root.fan_curves_reset_requested();
+                                            }
+                                        }
+                                        SegmentButton {
+                                            horizontal-stretch: 1;
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply Custom Curves";
+                                            available: !root.busy && root.fan_curves_available && !root.ppt_enabled;
+                                            clicked => {
+                                                cpu_grid.mark_pending();
+                                                gpu_grid.mark_pending();
+                                                root.custom_fan_curves_applied(
+                                                    cpu_grid.edited_temps,
+                                                    cpu_grid.edited_pwms,
+                                                    gpu_grid.edited_temps,
+                                                    gpu_grid.edited_pwms
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if root.ppt_available || root.gpu_range != "" || root.sppt_available || root.fppt_available || root.nv_boost_available : VerticalLayout {
                                 spacing: 4px;
                                 PreferencesGroupTitle {
                                     text: "Power & Thermal Limits";
@@ -502,14 +713,20 @@ export component AppWindow inherits Window {
                                             clicked => { root.tuning_requested(TuningAction.cpu-tuning, root.ppt_enabled ? 0 : 1); }
                                         }
                                     }
-                                    if root.ppt_enabled && root.cpu_range != "" : RowDivider {}
+                                    if root.ppt_available && root.ppt_enabled && root.cpu_range != "" : RowDivider {}
                                     if root.ppt_enabled && root.cpu_range != "" : ControlBlock {
-                                        title: "Sustained CPU Limit";
+                                        title: "Sustained CPU Limit (SPL)";
                                         subtitle: "Allowed range: " + root.cpu_range;
+                                        detail: root.spl;
                                         cpu := LineEdit {
                                             horizontal-stretch: 1;
                                             placeholder-text: root.cpu_range;
                                             accessible-label: "CPU sustained limit in watts";
+                                            accepted => {
+                                                if !root.busy && self.text != "" {
+                                                    root.tuning_requested(TuningAction.cpu-limit, self.text.is-float() && floor(self.text.to-float()) == self.text.to-float() ? self.text.to-float() : -1);
+                                                }
+                                            }
                                         }
                                         SegmentButton {
                                             compact: true;
@@ -519,14 +736,66 @@ export component AppWindow inherits Window {
                                             clicked => { root.tuning_requested(TuningAction.cpu-limit, cpu.text.is-float() && floor(cpu.text.to-float()) == cpu.text.to-float() ? cpu.text.to-float() : -1); }
                                         }
                                     }
-                                    if root.gpu_range != "" : RowDivider {}
+                                    if (root.ppt_available || (root.ppt_enabled && root.cpu_range != "")) && root.ppt_enabled && root.sppt_available : RowDivider {}
+                                    if root.ppt_enabled && root.sppt_available : ControlBlock {
+                                        title: "Short-Term CPU Boost (SPPT)";
+                                        subtitle: root.sppt_range != "" ? "Allowed range: " + root.sppt_range : "Short-term PPT PL2 boost limit";
+                                        detail: root.sppt_watts;
+                                        sppt_input := LineEdit {
+                                            horizontal-stretch: 1;
+                                            placeholder-text: root.sppt_range != "" ? root.sppt_range : "Watts";
+                                            accessible-label: "CPU SPPT short-term boost limit in watts";
+                                            accepted => {
+                                                if !root.busy && self.text != "" {
+                                                    root.sppt_limit_requested(self.text.is-float() && floor(self.text.to-float()) == self.text.to-float() ? self.text.to-float() : -1);
+                                                }
+                                            }
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply";
+                                            available: !root.busy && sppt_input.text != "";
+                                            clicked => { root.sppt_limit_requested(sppt_input.text.is-float() && floor(sppt_input.text.to-float()) == sppt_input.text.to-float() ? sppt_input.text.to-float() : -1); }
+                                        }
+                                    }
+                                    if (root.ppt_available || (root.ppt_enabled && (root.cpu_range != "" || root.sppt_available))) && root.ppt_enabled && root.fppt_available : RowDivider {}
+                                    if root.ppt_enabled && root.fppt_available : ControlBlock {
+                                        title: "Peak CPU Boost (FPPT)";
+                                        subtitle: root.fppt_range != "" ? "Allowed range: " + root.fppt_range : "Fast PPT PL3 peak boost limit";
+                                        detail: root.fppt_watts;
+                                        fppt_input := LineEdit {
+                                            horizontal-stretch: 1;
+                                            placeholder-text: root.fppt_range != "" ? root.fppt_range : "Watts";
+                                            accessible-label: "CPU FPPT peak boost limit in watts";
+                                            accepted => {
+                                                if !root.busy && self.text != "" {
+                                                    root.fppt_limit_requested(self.text.is-float() && floor(self.text.to-float()) == self.text.to-float() ? self.text.to-float() : -1);
+                                                }
+                                            }
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply";
+                                            available: !root.busy && fppt_input.text != "";
+                                            clicked => { root.fppt_limit_requested(fppt_input.text.is-float() && floor(fppt_input.text.to-float()) == fppt_input.text.to-float() ? fppt_input.text.to-float() : -1); }
+                                        }
+                                    }
+                                    if (root.ppt_available || (root.ppt_enabled && (root.cpu_range != "" || root.sppt_available || root.fppt_available))) && root.gpu_range != "" : RowDivider {}
                                     if root.gpu_range != "" : ControlBlock {
                                         title: "NVIDIA Thermal Target";
-                                        subtitle: "Current: " + root.nv_target + "  ·  Range: " + root.gpu_range;
+                                        subtitle: "Allowed range: " + root.gpu_range;
+                                        detail: root.nv_target;
                                         temp := LineEdit {
                                             horizontal-stretch: 1;
                                             placeholder-text: root.gpu_range;
                                             accessible-label: "NVIDIA thermal target in degrees Celsius";
+                                            accepted => {
+                                                if !root.busy && self.text != "" {
+                                                    root.tuning_requested(TuningAction.gpu-temperature, self.text.is-float() && floor(self.text.to-float()) == self.text.to-float() ? self.text.to-float() : -1);
+                                                }
+                                            }
                                         }
                                         SegmentButton {
                                             compact: true;
@@ -534,6 +803,29 @@ export component AppWindow inherits Window {
                                             text: "Apply";
                                             available: !root.busy && temp.text != "";
                                             clicked => { root.tuning_requested(TuningAction.gpu-temperature, temp.text.is-float() && floor(temp.text.to-float()) == temp.text.to-float() ? temp.text.to-float() : -1); }
+                                        }
+                                    }
+                                    if (root.ppt_available || root.gpu_range != "" || (root.ppt_enabled && (root.sppt_available || root.fppt_available))) && root.nv_boost_available : RowDivider {}
+                                    if root.nv_boost_available : ControlBlock {
+                                        title: "NVIDIA Dynamic Boost";
+                                        subtitle: root.nv_boost_range != "" ? "Allowed range: " + root.nv_boost_range : "GPU Dynamic Boost wattage offset";
+                                        detail: root.nv_boost_watts;
+                                        nv_boost_input := LineEdit {
+                                            horizontal-stretch: 1;
+                                            placeholder-text: root.nv_boost_range != "" ? root.nv_boost_range : "Watts";
+                                            accessible-label: "NVIDIA Dynamic Boost in watts";
+                                            accepted => {
+                                                if !root.busy && self.text != "" {
+                                                    root.nv_boost_requested(self.text.is-float() && floor(self.text.to-float()) == self.text.to-float() ? self.text.to-float() : -1);
+                                                }
+                                            }
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply";
+                                            available: !root.busy && nv_boost_input.text != "";
+                                            clicked => { root.nv_boost_requested(nv_boost_input.text.is-float() && floor(nv_boost_input.text.to-float()) == nv_boost_input.text.to-float() ? nv_boost_input.text.to-float() : -1); }
                                         }
                                     }
                                 }
@@ -601,6 +893,17 @@ export component AppWindow inherits Window {
                                             clicked => { root.tuning_requested(TuningAction.builtin-refresh, hz); }
                                         }
                                     }
+                                    if root.builtin_available && root.builtin_refresh_low > 0 : RowDivider {}
+                                    if root.builtin_available && root.builtin_refresh_low > 0 : ActionRow {
+                                        title: "Auto Refresh Rate (AC / Battery)";
+                                        subtitle: "Use " + root.builtin_refresh_high + " Hz on AC power and " + root.builtin_refresh_low + " Hz on battery";
+                                        ToggleSwitch {
+                                            label: "Auto refresh rate on AC and battery";
+                                            checked: root.auto_refresh_enabled;
+                                            available: !root.busy;
+                                            toggled => { root.auto_refresh_toggled(!root.auto_refresh_enabled); }
+                                        }
+                                    }
                                     if root.builtin_available && root.display_mirrored : RowDivider {}
                                     if root.builtin_available && root.display_mirrored : Reading {
                                         label: "Mirror Mode Active";
@@ -626,9 +929,30 @@ export component AppWindow inherits Window {
                                 spacing: 4px;
                                 PreferencesGroupTitle {
                                     text: "External Monitor (" + root.display_name + ")";
-                                    description: "VESA DDC/CI luminance, contrast, and Wayland refresh rate";
+                                    description: "VESA DDC/CI luminance, contrast, input, scaling, and refresh rate";
                                 }
                                 PreferencesCard {
+                                    if root.external_display_count > 1 : ControlBlock {
+                                        title: "Target External Monitor";
+                                        subtitle: root.selected_external_connector != ""
+                                            ? "Connector: " + root.selected_external_connector
+                                            : "Choose which external monitor to configure";
+                                        detail: (root.selected_external_index + 1) + " / " + root.external_display_count;
+                                        ext_picker := ComboBox {
+                                            horizontal-stretch: 1;
+                                            model: root.external_display_names;
+                                            current-index <=> root.ext_combo_idx;
+                                            enabled: !root.busy && root.external_display_names.length > 0;
+                                            accessible-label: "Select external monitor";
+                                            selected => {
+                                                if self.current-index >= 0 && self.current-index != root.selected_external_index {
+                                                    root.input_armed = false;
+                                                    root.external_display_selected(self.current-index);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if root.external_display_count > 1 : RowDivider {}
                                     Reading {
                                         label: "Connected Output";
                                         subtitle: root.display_ddc_available ? "VESA DDC/CI hardware channel online" : "DDC/CI unavailable — enable DDC/CI in monitor OSD";
@@ -670,7 +994,8 @@ export component AppWindow inherits Window {
                                         spacing: 10px;
                                         HorizontalLayout {
                                             alignment: space-between;
-                                            Text { text: "Monitor Backlight Brightness"; color: Yaru.text; font-size: 13px; font-weight: 500; }
+                                            spacing: 12px;
+                                            Text { horizontal-stretch: 1; text: "Monitor Backlight Brightness"; color: Yaru.text; font-size: 13px; font-weight: 500; wrap: word-wrap; }
                                             ValueBadge { text: (root.display_ddc_available && root.display_brightness >= 0) ? round(root.display_bri_draft) + "%" : "Unavailable"; }
                                         }
                                         if root.display_ddc_available && root.display_brightness >= 0 : YaruSlider {
@@ -709,7 +1034,8 @@ export component AppWindow inherits Window {
                                         spacing: 10px;
                                         HorizontalLayout {
                                             alignment: space-between;
-                                            Text { text: "Panel Contrast"; color: Yaru.text; font-size: 13px; font-weight: 500; }
+                                            spacing: 12px;
+                                            Text { horizontal-stretch: 1; text: "Panel Contrast"; color: Yaru.text; font-size: 13px; font-weight: 500; wrap: word-wrap; }
                                             ValueBadge { text: round(root.contrast_draft) + "%"; }
                                         }
                                         YaruSlider {
@@ -737,6 +1063,106 @@ export component AppWindow inherits Window {
                                             }
                                         }
                                     }
+                                    if root.display_ddc_available && root.display_input_codes.length > 0 : RowDivider {}
+                                    if root.display_ddc_available && root.display_input_codes.length > 0 : ControlBlock {
+                                        title: "Input Source (VCP 0x60)";
+                                        subtitle: root.input_armed
+                                            ? "Click Confirm Switch within 4s to switch to " + root.pending_input_label
+                                            : "Two-step confirmation prevents accidental display blackouts";
+                                        detail: root.display_input_current >= 0
+                                            ? root.label_for_code(root.display_input_codes, root.display_input_labels, root.display_input_current, "Input " + root.display_input_current)
+                                            : "Unknown";
+                                        input_picker := ComboBox {
+                                            horizontal-stretch: 1;
+                                            model: root.display_input_labels;
+                                            current-index <=> root.input_combo_idx;
+                                            enabled: !root.busy && root.display_input_labels.length > 0;
+                                            accessible-label: "Choose monitor input source";
+                                            selected => { root.input_armed = false; }
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: root.input_armed;
+                                            text: root.input_armed ? "Confirm Switch" : "Switch Input";
+                                            available: !root.busy && (root.input_armed
+                                                || (root.input_combo_idx >= 0
+                                                    && root.input_combo_idx < root.display_input_codes.length
+                                                    && root.display_input_codes[root.input_combo_idx] != root.display_input_current));
+                                            clicked => {
+                                                if root.input_armed {
+                                                    let code = root.pending_input_code;
+                                                    root.input_armed = false;
+                                                    root.display_input_changed(code);
+                                                } else if root.input_combo_idx >= 0 && root.input_combo_idx < root.display_input_codes.length {
+                                                    root.pending_input_code = root.display_input_codes[root.input_combo_idx];
+                                                    root.pending_input_label = root.input_combo_idx < root.display_input_labels.length
+                                                        ? root.display_input_labels[root.input_combo_idx]
+                                                        : ("Input " + root.pending_input_code);
+                                                    root.input_armed = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if root.display_ddc_available && root.display_scaling_codes.length > 0 : RowDivider {}
+                                    if root.display_ddc_available && root.display_scaling_codes.length > 0 : VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 14px;
+                                        spacing: 10px;
+                                        VerticalLayout {
+                                            spacing: 3px;
+                                            HorizontalLayout {
+                                                alignment: space-between;
+                                                spacing: 12px;
+                                                Text {
+                                                    horizontal-stretch: 1;
+                                                    text: "Display Scaling (VCP 0x86)";
+                                                    color: Yaru.text;
+                                                    font-size: 13px;
+                                                    font-weight: 500;
+                                                    vertical-alignment: center;
+                                                    wrap: word-wrap;
+                                                }
+                                                ValueBadge {
+                                                    max-width: 210px;
+                                                    text: root.display_scaling_current >= 0
+                                                        ? root.label_for_code(root.display_scaling_codes, root.display_scaling_labels, root.display_scaling_current, "Mode " + root.display_scaling_current)
+                                                        : "Unknown";
+                                                }
+                                            }
+                                            Text {
+                                                text: "Monitor hardware aspect and scaling behavior";
+                                                color: Yaru.text-dim;
+                                                font-size: 11.5px;
+                                                wrap: word-wrap;
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            scaling_picker := ComboBox {
+                                                horizontal-stretch: 1;
+                                                model: root.display_scaling_labels;
+                                                current-index <=> root.scaling_combo_idx;
+                                                enabled: !root.busy && root.display_scaling_labels.length > 0;
+                                                accessible-label: "Choose display scaling mode";
+                                            }
+                                            SegmentButton {
+                                                compact: true;
+                                                primary: true;
+                                                text: "Apply";
+                                                available: !root.busy
+                                                    && root.scaling_combo_idx >= 0
+                                                    && root.scaling_combo_idx < root.display_scaling_codes.length
+                                                    && root.display_scaling_codes[root.scaling_combo_idx] != root.display_scaling_current;
+                                                clicked => {
+                                                    if root.scaling_combo_idx >= 0 && root.scaling_combo_idx < root.display_scaling_codes.length {
+                                                        root.display_scaling_changed(root.display_scaling_codes[root.scaling_combo_idx]);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
@@ -755,7 +1181,45 @@ export component AppWindow inherits Window {
                                         padding-bottom: 12px;
                                         spacing: 10px;
                                         Text { text: "Color Temperature"; color: Yaru.text; font-size: 13px; font-weight: 500; }
-                                        HorizontalLayout {
+                                        if root.display_preset_codes.length > 0 : VerticalLayout {
+                                            spacing: 8px;
+                                            for offset in [0, 3, 6, 9] : VerticalLayout {
+                                                if offset < root.display_preset_codes.length : HorizontalLayout {
+                                                    spacing: 8px;
+                                                    if offset < root.display_preset_codes.length : SegmentButton {
+                                                        horizontal-stretch: 1;
+                                                        compact: true;
+                                                        text: offset < root.display_preset_labels.length
+                                                            ? root.display_preset_labels[offset]
+                                                            : ("Preset " + root.display_preset_codes[offset]);
+                                                        active: root.display_color_preset_raw == root.display_preset_codes[offset];
+                                                        available: !root.busy;
+                                                        clicked => { root.display_color_preset_raw_changed(root.display_preset_codes[offset]); }
+                                                    }
+                                                    if (offset + 1) < root.display_preset_codes.length : SegmentButton {
+                                                        horizontal-stretch: 1;
+                                                        compact: true;
+                                                        text: (offset + 1) < root.display_preset_labels.length
+                                                            ? root.display_preset_labels[offset + 1]
+                                                            : ("Preset " + root.display_preset_codes[offset + 1]);
+                                                        active: root.display_color_preset_raw == root.display_preset_codes[offset + 1];
+                                                        available: !root.busy;
+                                                        clicked => { root.display_color_preset_raw_changed(root.display_preset_codes[offset + 1]); }
+                                                    }
+                                                    if (offset + 2) < root.display_preset_codes.length : SegmentButton {
+                                                        horizontal-stretch: 1;
+                                                        compact: true;
+                                                        text: (offset + 2) < root.display_preset_labels.length
+                                                            ? root.display_preset_labels[offset + 2]
+                                                            : ("Preset " + root.display_preset_codes[offset + 2]);
+                                                        active: root.display_color_preset_raw == root.display_preset_codes[offset + 2];
+                                                        available: !root.busy;
+                                                        clicked => { root.display_color_preset_raw_changed(root.display_preset_codes[offset + 2]); }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        if root.display_preset_codes.length <= 0 : HorizontalLayout {
                                             spacing: 8px;
                                             for p in [
                                                 { label: "Standard", id: 0 },
@@ -770,7 +1234,7 @@ export component AppWindow inherits Window {
                                                 clicked => { root.display_color_preset_changed(p.id); }
                                             }
                                         }
-                                        HorizontalLayout {
+                                        if root.display_preset_codes.length <= 0 : HorizontalLayout {
                                             spacing: 8px;
                                             for p in [
                                                 { label: "sRGB Reference", id: 2 },
@@ -805,7 +1269,7 @@ export component AppWindow inherits Window {
                                         HorizontalLayout {
                                             spacing: 10px;
                                             alignment: stretch;
-                                            Text { text: "Red"; color: #F28B82; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
+                                            Text { text: "Red"; color: Yaru.rgb-red; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
                                             YaruSlider {
                                                 horizontal-stretch: 1;
                                                 minimum: 0;
@@ -821,7 +1285,7 @@ export component AppWindow inherits Window {
                                         HorizontalLayout {
                                             spacing: 10px;
                                             alignment: stretch;
-                                            Text { text: "Green"; color: #81C995; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
+                                            Text { text: "Green"; color: Yaru.rgb-green; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
                                             YaruSlider {
                                                 horizontal-stretch: 1;
                                                 minimum: 0;
@@ -837,7 +1301,7 @@ export component AppWindow inherits Window {
                                         HorizontalLayout {
                                             spacing: 10px;
                                             alignment: stretch;
-                                            Text { text: "Blue"; color: #8AB4F8; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
+                                            Text { text: "Blue"; color: Yaru.rgb-blue; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
                                             YaruSlider {
                                                 horizontal-stretch: 1;
                                                 minimum: 0;
@@ -949,12 +1413,22 @@ export component AppWindow inherits Window {
                                     if root.display_is_external && root.display_ddc_available : RowDivider {}
                                     if root.display_is_external && root.display_ddc_available : ActionRow {
                                         title: "Display Power Standby";
-                                        subtitle: "Put external monitor into hardware standby immediately";
+                                        subtitle: root.sleep_armed
+                                            ? "Click Confirm Standby within 4s (wake via input or power button)"
+                                            : "Put external monitor into DDC/CI standby (two-step safety)";
                                         SegmentButton {
                                             compact: true;
-                                            text: "Put to Sleep";
+                                            primary: root.sleep_armed;
+                                            text: root.sleep_armed ? "Confirm Standby" : "Put to Sleep";
                                             available: !root.busy;
-                                            clicked => { root.display_sleep_requested(); }
+                                            clicked => {
+                                                if root.sleep_armed {
+                                                    root.sleep_armed = false;
+                                                    root.display_sleep_requested();
+                                                } else {
+                                                    root.sleep_armed = true;
+                                                }
+                                            }
                                         }
                                     }
                                     RowDivider {}
@@ -1120,6 +1594,158 @@ export component AppWindow inherits Window {
                                             clicked => { root.custom_charge_requested(target.text); }
                                         }
                                     }
+                                    if root.one_shot_charge_available : RowDivider {}
+                                    if root.one_shot_charge_available : ActionRow {
+                                        title: "One-Shot Full Charge";
+                                        subtitle: "Temporarily charge to 100% once, then restore saved threshold";
+                                        SegmentButton {
+                                            compact: true;
+                                            text: "Charge to 100% Once";
+                                            available: root.one_shot_charge_available && !root.busy;
+                                            clicked => { root.one_shot_charge_requested(); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if root.auto_profile_available : VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Power Profile Automation";
+                                    description: "Automatic asusd profile and GPU power rules on AC or battery";
+                                }
+                                PreferencesCard {
+                                    VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+                                        HorizontalLayout {
+                                            alignment: space-between;
+                                            spacing: 12px;
+                                            VerticalLayout {
+                                                horizontal-stretch: 1;
+                                                spacing: 2px;
+                                                Text {
+                                                    text: "Profile on AC Power";
+                                                    color: Yaru.text;
+                                                    font-size: 13px;
+                                                    font-weight: 500;
+                                                }
+                                                Text {
+                                                    text: "Automatically apply profile when charger connects";
+                                                    color: Yaru.text-dim;
+                                                    font-size: 11.5px;
+                                                    wrap: word-wrap;
+                                                }
+                                            }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                ToggleSwitch {
+                                                    label: "Switch platform profile on AC power";
+                                                    checked: root.change_profile_on_ac;
+                                                    available: root.auto_profile_available && !root.busy;
+                                                    toggled => { root.ac_automation_changed(!root.change_profile_on_ac, root.profile_on_ac); }
+                                                }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            for mode[i] in [
+                                                { label: "Quiet", id: 2, bit: 4 },
+                                                { label: "Balanced", id: 0, bit: 1 },
+                                                { label: "Performance", id: 1, bit: 2 }
+                                            ] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: mode.label;
+                                                active: root.profile_on_ac == mode.id || (i == 0 && root.profile_on_ac == 3);
+                                                available: !root.busy && root.auto_profile_available && root.change_profile_on_ac
+                                                    && (root.supported(root.profile_choices, mode.bit) || (i == 0 && root.supported(root.profile_choices, 8)));
+                                                clicked => {
+                                                    root.ac_automation_changed(true, i == 0 && !root.supported(root.profile_choices, 4) ? 3 : mode.id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    RowDivider {}
+                                    VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+                                        HorizontalLayout {
+                                            alignment: space-between;
+                                            spacing: 12px;
+                                            VerticalLayout {
+                                                horizontal-stretch: 1;
+                                                spacing: 2px;
+                                                Text {
+                                                    text: "Profile on Battery Power";
+                                                    color: Yaru.text;
+                                                    font-size: 13px;
+                                                    font-weight: 500;
+                                                }
+                                                Text {
+                                                    text: "Automatically apply profile when running on battery";
+                                                    color: Yaru.text-dim;
+                                                    font-size: 11.5px;
+                                                    wrap: word-wrap;
+                                                }
+                                            }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                ToggleSwitch {
+                                                    label: "Switch platform profile on battery power";
+                                                    checked: root.change_profile_on_battery;
+                                                    available: root.auto_profile_available && !root.busy;
+                                                    toggled => { root.battery_automation_changed(!root.change_profile_on_battery, root.profile_on_battery); }
+                                                }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            for mode[i] in [
+                                                { label: "Quiet", id: 2, bit: 4 },
+                                                { label: "Balanced", id: 0, bit: 1 },
+                                                { label: "Performance", id: 1, bit: 2 }
+                                            ] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: mode.label;
+                                                active: root.profile_on_battery == mode.id || (i == 0 && root.profile_on_battery == 3);
+                                                available: !root.busy && root.auto_profile_available && root.change_profile_on_battery
+                                                    && (root.supported(root.profile_choices, mode.bit) || (i == 0 && root.supported(root.profile_choices, 8)));
+                                                clicked => {
+                                                    root.battery_automation_changed(true, i == 0 && !root.supported(root.profile_choices, 4) ? 3 : mode.id);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    RowDivider {}
+                                    ActionRow {
+                                        title: "Disable NVIDIA Powerd on Battery";
+                                        subtitle: "Prevents NVIDIA dynamic boost while unplugged";
+                                        ToggleSwitch {
+                                            label: "Disable NVIDIA Powerd on battery";
+                                            checked: root.disable_nvidia_on_battery;
+                                            available: root.auto_profile_available && !root.busy;
+                                            toggled => { root.disable_nvidia_on_battery_changed(!root.disable_nvidia_on_battery); }
+                                        }
+                                    }
+                                    RowDivider {}
+                                    ActionRow {
+                                        title: "Link CPU EPP to Platform Profile";
+                                        subtitle: "Synchronizes processor energy performance preference with active profile";
+                                        ToggleSwitch {
+                                            label: "Link CPU EPP to platform profile";
+                                            checked: root.linked_epp;
+                                            available: root.auto_profile_available && !root.busy;
+                                            toggled => { root.linked_epp_changed(!root.linked_epp); }
+                                        }
+                                    }
                                 }
                             }
 
@@ -1160,7 +1786,7 @@ export component AppWindow inherits Window {
                                 spacing: 4px;
                                 PreferencesGroupTitle {
                                     text: "Desktop Integration";
-                                    description: "Startup and background tray behavior";
+                                    description: "Startup, tray, and window appearance";
                                 }
                                 PreferencesCard {
                                     ActionRow {
@@ -1172,6 +1798,19 @@ export component AppWindow inherits Window {
                                             toggled => { root.autostart_toggled(!root.autostart_enabled); }
                                         }
                                     }
+                                    RowDivider {}
+                                    ActionRow {
+                                        title: "Dark Theme";
+                                        subtitle: "Use Ubuntu 24 Yaru dark palette";
+                                        ToggleSwitch {
+                                            label: "Use dark theme";
+                                            checked: root.dark_mode;
+                                            toggled => {
+                                                root.dark_mode = !root.dark_mode;
+                                                Palette.color-scheme = root.dark_mode ? ColorScheme.dark : ColorScheme.light;
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1181,7 +1820,7 @@ export component AppWindow inherits Window {
         }
 
         // BOTTOM STATUS BAR
-        Rectangle { height: 1px; background: #303030; }
+        Rectangle { height: 1px; background: Yaru.header-border; }
         Rectangle {
             height: 40px;
             background: root.status_error || root.thermal_alert ? Yaru.error-bg : Yaru.header;
