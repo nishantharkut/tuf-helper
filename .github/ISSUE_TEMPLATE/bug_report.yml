@@ -1,0 +1,42 @@
+name: Bug report
+description: Report incorrect hardware readings, display/DDC behavior, or UI defects
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Please include read-only hardware diagnostics (`cargo run --locked -p tuf-core --example test_hw`) whenever relevant.
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Concise description of the bug and what you expected to happen.
+    validations:
+      required: true
+  - type: input
+    id: laptop
+    attributes:
+      label: Laptop & External Monitor Model(s)
+      placeholder: e.g. ASUS TUF Gaming A15 ASUS-TUF-Laptop + External MCCS Monitor (HDMI-1)
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS, Desktop & asusd version
+      placeholder: e.g. Ubuntu 24.04 LTS, GNOME 46 Wayland, asusd
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics (`test_hw` / terminal logs)
+      description: Paste output from `cargo run --locked -p tuf-core --example test_hw` or `ddcutil detect` (redact any personal paths/serials if desired).
+      render: text
