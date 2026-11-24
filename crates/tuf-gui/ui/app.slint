@@ -1,0 +1,1222 @@
+// Ubuntu 24 (Yaru / Libadwaita + COSMIC Dark) Main Application Window
+
+import { ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import {
+    ActionRow, ColorSwatch, ControlBlock, HistoryChart, PreferencesCard,
+    PreferencesGroupTitle, Reading, RowDivider, SegmentButton, ToggleSwitch,
+    ValueBadge, ViewTabButton, Yaru, YaruSlider
+} from "components.slint";
+import { QuickPanel } from "quick-panel.slint";
+
+export enum TuningAction {
+    profile, fan, gpu, cancel-gpu, cpu-tuning, cpu-limit, gpu-temperature,
+    builtin-brightness, builtin-refresh, display-brightness, display-refresh
+}
+
+export component AppWindow inherits Window {
+    title: "TUF-Helper";
+    icon: @image-url("../../../assets/tuf-helper.svg");
+    min-width: 500px;
+    preferred-width: 580px;
+    min-height: 540px;
+    preferred-height: 780px;
+    background: Yaru.bg;
+
+    in-out property <string> model: "ASUS laptop";
+    in-out property <string> cpu_temp: "—";
+    in-out property <string> gpu_temp: "—";
+    in-out property <string> cpu_fan: "Fan speed unavailable";
+    in-out property <string> gpu_fan: "Fan speed unavailable";
+    in-out property <string> battery_percent: "—";
+    in-out property <string> battery_rate: "—";
+    in-out property <string> battery_limit: "Unavailable";
+    in-out property <string> battery_state: "Unavailable";
+    in-out property <string> battery_health: "Unavailable";
+    in-out property <string> battery_cycles: "Unavailable";
+    in-out property <string> ac_status: "Unavailable";
+
+    in-out property <string> cpu_temp_chart;
+    in-out property <string> gpu_temp_chart;
+    in-out property <string> cpu_fan_chart;
+    in-out property <string> gpu_fan_chart;
+    in-out property <string> temp_peaks: "Waiting for readings…";
+    in-out property <string> fan_peaks: "Waiting for readings…";
+    in-out property <string> fan_chart_max: "3000 RPM";
+    in-out property <string> thermal_notice;
+    in-out property <bool> thermal_alert;
+
+    in-out property <string> profile: "Unavailable";
+    in-out property <int> profile_id: -1;
+    in-out property <int> profile_choices;
+    in-out property <bool> fan_available;
+    in-out property <bool> custom_fans;
+    in-out property <int> gpu_mode: -1;
+    in-out property <bool> gpu_queued;
+    in-out property <bool> ppt_available;
+    in-out property <bool> ppt_enabled;
+    in-out property <string> cpu_range;
+    in-out property <string> gpu_range;
+    in-out property <bool> builtin_available;
+    in-out property <string> builtin_name: "Built-in Display";
+    in-out property <int> builtin_brightness: -1;
+    in-out property <int> builtin_refresh_current: -1;
+    in-out property <int> builtin_refresh_low: -1;
+    in-out property <int> builtin_refresh_high: -1;
+
+    in-out property <string> display_name: "Display";
+    in-out property <bool> display_is_external: true;
+    in-out property <bool> display_mirrored: false;
+    in-out property <bool> display_ddc_available: false;
+    in-out property <bool> display_ddc_audio: false;
+    in-out property <int> display_brightness: -1;
+    in-out property <int> refresh_current: -1;
+    in-out property <int> refresh_low: -1;
+    in-out property <int> refresh_mid: -1;
+    in-out property <int> refresh_high: -1;
+    in-out property <int> display_contrast: 100;
+    in-out property <int> display_color_preset: 0;
+    in-out property <int> display_rgb_r: 100;
+    in-out property <int> display_rgb_g: 100;
+    in-out property <int> display_rgb_b: 100;
+    in-out property <int> display_volume: 100;
+    in-out property <bool> display_muted: false;
+    in-out property <string> graphics: "Unavailable";
+    in-out property <string> fans: "Curve status unavailable";
+    in-out property <string> spl: "Unavailable";
+    in-out property <string> nv_target: "Unavailable";
+    in-out property <bool> hardware_available;
+    in-out property <bool> busy;
+    in-out property <bool> refreshing;
+    in-out property <bool> sensor_pending;
+    in-out property <string> nvidia_runtime: "Unavailable";
+    in-out property <string> nvidia_outputs: "Unavailable";
+    in-out property <string> status;
+    in-out property <bool> status_error;
+
+    in-out property <bool> charge_available;
+    in-out property <int> charge_limit: -1;
+    in-out property <bool> overdrive_available;
+    in-out property <bool> overdrive;
+    in-out property <int> brightness: -1;
+    in-out property <int> brightness_choices;
+    in-out property <[int]> aura_ids;
+    in-out property <[string]> aura_names;
+    in-out property <string> current_effect: "Unavailable";
+    in-out property <bool> static_color_available;
+    in-out property <string> active_color;
+    in-out property <bool> autostart_enabled;
+    private property <int> tab: 0;
+    private property <int> detail_tab: 1;
+    private property <float> builtin_bri_draft: max(5, root.builtin_brightness);
+    private property <float> display_vol_draft: root.display_volume;
+    private property <float> display_bri_draft: max(0, root.display_brightness);
+    private property <float> contrast_draft: max(0, min(100, root.display_contrast));
+    private property <float> rgb_r_draft: max(0, min(100, root.display_rgb_r));
+    private property <float> rgb_g_draft: max(0, min(100, root.display_rgb_g));
+    private property <float> rgb_b_draft: max(0, min(100, root.display_rgb_b));
+
+    changed builtin_brightness => {
+        if root.builtin_brightness >= 0 {
+            root.builtin_bri_draft = max(5, min(100, root.builtin_brightness));
+        }
+    }
+    changed display_volume => { root.display_vol_draft = root.display_volume; }
+    changed display_brightness => {
+        if root.display_brightness >= 0 {
+            root.display_bri_draft = max(0, min(100, root.display_brightness));
+        }
+    }
+    changed display_contrast => { root.contrast_draft = max(0, min(100, root.display_contrast)); }
+    changed display_rgb_r => { root.rgb_r_draft = max(0, min(100, root.display_rgb_r)); }
+    changed display_rgb_g => { root.rgb_g_draft = max(0, min(100, root.display_rgb_g)); }
+    changed display_rgb_b => { root.rgb_b_draft = max(0, min(100, root.display_rgb_b)); }
+
+    function open_page(index: int) {
+        if index > 0 { root.detail_tab = index; }
+        root.tab = index;
+        page.content-y = 0px;
+    }
+
+    callback tuning_requested(TuningAction, int);
+    callback quit();
+    callback refresh_requested();
+    callback charge_limit_changed(int);
+    callback custom_charge_requested(string);
+    callback overdrive_changed(bool);
+    callback brightness_changed(int);
+    callback aura_mode_changed(int);
+    callback aura_color_selected(string);
+    callback autostart_toggled(bool);
+    callback display_contrast_changed(int);
+    callback display_color_preset_changed(int);
+    callback display_rgb_changed(int, int, int);
+    callback display_volume_changed(int);
+    callback display_mute_toggled(bool);
+    callback display_sleep_requested();
+    callback display_orientation_changed(int);
+
+    function supported(mask: int, bit: int) -> bool {
+        return mod(floor(mask / bit), 2) == 1;
+    }
+
+    VerticalLayout {
+        spacing: 0px;
+
+        // ADWAITA HEADERBAR + VIEW SWITCHER TRAY
+        Rectangle {
+            background: Yaru.header;
+            border-width: 0px;
+
+            VerticalLayout {
+                padding-left: 18px;
+                padding-right: 18px;
+                padding-top: 12px;
+                padding-bottom: 12px;
+                spacing: 12px;
+
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 10px;
+                        horizontal-stretch: 1;
+                        VerticalLayout {
+                            alignment: center;
+                            Image {
+                                source: @image-url("../../../assets/tuf-helper.svg");
+                                width: 26px;
+                                height: 26px;
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 1px;
+                            Text {
+                                text: "TUF-Helper";
+                                color: Yaru.text;
+                                font-size: 15px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.model;
+                                color: Yaru.text-dim;
+                                font-size: 11px;
+                                overflow: elide;
+                            }
+                        }
+                    }
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: end;
+                        VerticalLayout {
+                            alignment: center;
+                            SegmentButton {
+                                compact: true;
+                                text: root.refreshing ? "Refreshing…" : "Refresh";
+                                available: !root.busy && !root.refreshing;
+                                clicked => { root.refresh_requested(); }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            SegmentButton {
+                                compact: true;
+                                text: "Quit";
+                                clicked => { root.quit(); }
+                            }
+                        }
+                    }
+                }
+
+                // PILL NAVIGATION BAR (AdwViewSwitcher)
+                Rectangle {
+                    height: 40px;
+                    border-radius: 10px;
+                    background: #1b1b1b;
+                    border-width: 1px;
+                    border-color: #303030;
+
+                    HorizontalLayout {
+                        padding: 3px;
+                        spacing: 3px;
+                        for tab_name[i] in ["Overview", "System", "Cooling", "Display", "Lighting", "Battery"] : ViewTabButton {
+                            text: tab_name;
+                            active: root.tab == i;
+                            horizontal-stretch: 1;
+                            clicked => { root.open_page(i); }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Header bottom hairline separator
+        Rectangle { height: 1px; background: #323232; }
+
+        // SCROLLABLE CLAMPED BODY
+        page := ScrollView {
+            horizontal-scrollbar-policy: always-off;
+            content-width: self.visible-width;
+
+            // AdwClamp responsive container
+            VerticalLayout {
+                width: page.visible-width;
+                alignment: start;
+                padding-left: 18px;
+                padding-right: 22px;
+                padding-top: 16px;
+                padding-bottom: 18px;
+
+                HorizontalLayout {
+                    alignment: center;
+                    VerticalLayout {
+                        width: min(640px, max(420px, page.visible-width - 40px));
+                        alignment: start;
+
+                        // TAB 0: QUICK OVERVIEW
+                        if root.tab == 0 : QuickPanel {
+                            profile: root.profile;
+                            profile-id: root.profile_id;
+                            profile-choices: root.profile_choices;
+                            fan-available: root.fan_available;
+                            custom-fans: root.custom_fans;
+                            builtin-available: root.builtin_available;
+                            builtin-name: root.builtin_name;
+                            builtin-brightness: root.builtin_brightness;
+                            builtin-refresh-current: root.builtin_refresh_current;
+                            builtin-refresh-low: root.builtin_refresh_low;
+                            builtin-refresh-high: root.builtin_refresh_high;
+                            display-name: root.display_name;
+                            display-is-external: root.display_is_external;
+                            display-ddc-available: root.display_ddc_available;
+                            display-mirrored: root.display_mirrored;
+                            display-brightness: root.display_brightness;
+                            refresh-current: root.refresh_current;
+                            refresh-low: root.refresh_low;
+                            refresh-mid: root.refresh_mid;
+                            refresh-high: root.refresh_high;
+                            display-volume: root.display_volume;
+                            display-muted: root.display_muted;
+                            display-color-preset: root.display_color_preset;
+                            set-display-volume(v) => { root.display_volume_changed(v); }
+                            toggle-display-mute(m) => { root.display_mute_toggled(m); }
+                            set-display-color-preset(p) => { root.display_color_preset_changed(p); }
+                            apply-builtin-brightness(value) => { root.tuning_requested(TuningAction.builtin-brightness, value); }
+                            apply-builtin-refresh(value) => { root.tuning_requested(TuningAction.builtin-refresh, value); }
+                            apply-refresh(value) => { root.tuning_requested(TuningAction.display-refresh, value); }
+                            select-profile(id) => { root.tuning_requested(TuningAction.profile, id); }
+                            fan-preset(enabled) => { root.tuning_requested(TuningAction.fan, enabled ? 1 : 0); }
+                            apply-brightness(value) => { root.tuning_requested(TuningAction.display-brightness, value); }
+                            graphics: root.graphics;
+                            cpu_temp: root.cpu_temp;
+                            cpu_fan: root.cpu_fan;
+                            gpu_temp: root.gpu_temp;
+                            gpu_fan: root.gpu_fan;
+                            nvidia_runtime: root.nvidia_runtime;
+                            overdrive_available: root.overdrive_available;
+                            overdrive: root.overdrive;
+                            brightness: root.brightness;
+                            brightness_choices: root.brightness_choices;
+                            aura_names: root.aura_names;
+                            aura_ids: root.aura_ids;
+                            current_effect: root.current_effect;
+                            charge_limit: root.charge_limit;
+                            charge_available: root.charge_available;
+                            battery_limit: root.battery_limit;
+                            battery_percent: root.battery_percent;
+                            battery_rate: root.battery_rate;
+                            autostart_enabled: root.autostart_enabled;
+                            busy: root.busy;
+                            detail(index) => { root.open_page(index); }
+                            apply_limit(value) => { root.charge_limit_changed(value); }
+                            set_overdrive(value) => { root.overdrive_changed(value); }
+                            set_brightness(value) => { root.brightness_changed(value); }
+                            set_effect(value) => { root.aura_mode_changed(value); }
+                            set_autostart(value) => { root.autostart_toggled(value); }
+                        }
+
+                        // TAB 1: SYSTEM & GRAPHICS
+                        if root.tab == 1 : VerticalLayout {
+                            spacing: 18px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Platform Power";
+                                    description: "Active system profile and processor sustained power limit";
+                                }
+                                PreferencesCard {
+                                    Reading {
+                                        label: "Platform Profile";
+                                        subtitle: "Hardware power profile active in asusd";
+                                        value: root.profile;
+                                    }
+                                    RowDivider {}
+                                    Reading {
+                                        label: "CPU Sustained Power Limit";
+                                        subtitle: "Current platform SPL target";
+                                        value: root.spl;
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "GPU Mode Switching";
+                                    description: "Changes take effect on the next system restart";
+                                }
+                                PreferencesCard {
+                                    Reading {
+                                        label: "Active Mode";
+                                        subtitle: "Current GPU mux and display routing state";
+                                        value: root.graphics;
+                                    }
+                                    if root.gpu_mode >= 0 : RowDivider {}
+                                    if root.gpu_mode >= 0 : ControlBlock {
+                                        title: "Select Firmware GPU Mode";
+                                        subtitle: root.gpu_queued ? "A mode change is already queued for reboot."
+                                            : "Eco requires no active NVIDIA displays; switch through Hybrid between Eco and Ultimate.";
+                                        if root.gpu_queued : SegmentButton {
+                                            horizontal-stretch: 1;
+                                            primary: true;
+                                            text: "Cancel Queued GPU Change";
+                                            available: !root.busy;
+                                            clicked => { root.tuning_requested(TuningAction.cancel-gpu, 0); }
+                                        }
+                                        if !root.gpu_queued : HorizontalLayout {
+                                            horizontal-stretch: 1;
+                                            spacing: 8px;
+                                            for mode[i] in ["Eco", "Hybrid", "Ultimate"] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                text: mode;
+                                                active: root.gpu_mode == i;
+                                                available: !root.busy && i != root.gpu_mode
+                                                    && (i == 1 || root.gpu_mode == 1)
+                                                    && (i != 0 || root.nvidia_outputs == "None enabled");
+                                                clicked => { root.tuning_requested(TuningAction.gpu, i); }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "NVIDIA dGPU Activity";
+                                    description: "Displays routed through NVIDIA keep the dGPU active";
+                                }
+                                PreferencesCard {
+                                    Reading {
+                                        label: "Runtime Power State";
+                                        subtitle: "PCIe runtime suspend state";
+                                        value: root.nvidia_runtime;
+                                    }
+                                    RowDivider {}
+                                    Reading {
+                                        label: "Enabled Outputs";
+                                        subtitle: "Display connectors driven by the NVIDIA card";
+                                        value: root.nvidia_outputs;
+                                    }
+                                }
+                            }
+                        }
+
+                        // TAB 2: COOLING & TELEMETRY
+                        if root.tab == 2 : VerticalLayout {
+                            spacing: 18px;
+                            VerticalLayout {
+                                spacing: 10px;
+                                PreferencesGroupTitle {
+                                    text: "Thermal & Fan History";
+                                    description: "Two-minute rolling telemetry (pauses while window is hidden)";
+                                }
+                                HistoryChart {
+                                    title: "Temperatures";
+                                    scale_top: "120°C";
+                                    scale_bottom: "0°C";
+                                    legend: "CPU (Blue)  /  AMD GPU (Orange)";
+                                    first_path: root.cpu_temp_chart;
+                                    second_path: root.gpu_temp_chart;
+                                    peaks: root.temp_peaks;
+                                }
+                                HistoryChart {
+                                    title: "Fan Speeds";
+                                    scale_top: root.fan_chart_max;
+                                    scale_bottom: "0 RPM";
+                                    legend: "CPU Fan (Blue)  /  GPU Fan (Orange)";
+                                    first_path: root.cpu_fan_chart;
+                                    second_path: root.gpu_fan_chart;
+                                    peaks: root.fan_peaks;
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Fan Curve Control";
+                                    description: "Switch between BIOS automatic curves and an earlier ramp";
+                                }
+                                PreferencesCard {
+                                    ActionRow {
+                                        title: "Fan Configuration";
+                                        subtitle: root.fans;
+                                    }
+                                    if root.fan_available : RowDivider {}
+                                    if root.fan_available : ControlBlock {
+                                        title: "Cooling Curve Preset";
+                                        SegmentButton {
+                                            horizontal-stretch: 1;
+                                            text: "Automatic (BIOS)";
+                                            active: !root.custom_fans;
+                                            available: !root.busy && root.custom_fans;
+                                            clicked => { root.tuning_requested(TuningAction.fan, 0); }
+                                        }
+                                        SegmentButton {
+                                            horizontal-stretch: 1;
+                                            text: "Responsive Preset";
+                                            active: root.custom_fans;
+                                            available: !root.busy && !root.custom_fans;
+                                            clicked => { root.tuning_requested(TuningAction.fan, 1); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if root.ppt_available || root.gpu_range != "" : VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Power & Thermal Limits";
+                                    description: "Custom wattage envelope and NVIDIA throttle target";
+                                }
+                                PreferencesCard {
+                                    if root.ppt_available : ActionRow {
+                                        title: "CPU Power Tuning";
+                                        subtitle: root.ppt_enabled ? "Custom sustained wattage enabled" : "Requires a custom fan curve to unlock";
+                                        SegmentButton {
+                                            compact: true;
+                                            text: root.ppt_enabled ? "Restore Default" : "Enable Tuning";
+                                            available: !root.busy && (root.custom_fans || root.ppt_enabled);
+                                            clicked => { root.tuning_requested(TuningAction.cpu-tuning, root.ppt_enabled ? 0 : 1); }
+                                        }
+                                    }
+                                    if root.ppt_enabled && root.cpu_range != "" : RowDivider {}
+                                    if root.ppt_enabled && root.cpu_range != "" : ControlBlock {
+                                        title: "Sustained CPU Limit";
+                                        subtitle: "Allowed range: " + root.cpu_range;
+                                        cpu := LineEdit {
+                                            horizontal-stretch: 1;
+                                            placeholder-text: root.cpu_range;
+                                            accessible-label: "CPU sustained limit in watts";
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply";
+                                            available: !root.busy && cpu.text != "";
+                                            clicked => { root.tuning_requested(TuningAction.cpu-limit, cpu.text.is-float() && floor(cpu.text.to-float()) == cpu.text.to-float() ? cpu.text.to-float() : -1); }
+                                        }
+                                    }
+                                    if root.gpu_range != "" : RowDivider {}
+                                    if root.gpu_range != "" : ControlBlock {
+                                        title: "NVIDIA Thermal Target";
+                                        subtitle: "Current: " + root.nv_target + "  ·  Range: " + root.gpu_range;
+                                        temp := LineEdit {
+                                            horizontal-stretch: 1;
+                                            placeholder-text: root.gpu_range;
+                                            accessible-label: "NVIDIA thermal target in degrees Celsius";
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply";
+                                            available: !root.busy && temp.text != "";
+                                            clicked => { root.tuning_requested(TuningAction.gpu-temperature, temp.text.is-float() && floor(temp.text.to-float()) == temp.text.to-float() ? temp.text.to-float() : -1); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // TAB 3: DISPLAY COMMAND CENTER
+                        if root.tab == 3 : VerticalLayout {
+                            spacing: 18px;
+
+                            // 1. LAPTOP BUILT-IN DISPLAY
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Laptop Display (" + root.builtin_name + ")";
+                                    description: "Mutter Wayland panel backlight, refresh rate, and ASUS overdrive";
+                                }
+                                PreferencesCard {
+                                    if !root.builtin_available && !root.overdrive_available : Reading {
+                                        label: "Internal Panel";
+                                        subtitle: "Laptop display is inactive or lid is closed";
+                                        value: "Inactive";
+                                    }
+                                    if root.builtin_available : VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+                                        HorizontalLayout {
+                                            alignment: space-between;
+                                            Text { text: "Laptop Panel Brightness"; color: Yaru.text; font-size: 13px; font-weight: 500; }
+                                            ValueBadge { text: root.builtin_brightness >= 0 ? round(root.builtin_bri_draft) + "%" : "Unavailable"; }
+                                        }
+                                        if root.builtin_brightness >= 0 : YaruSlider {
+                                            minimum: 5;
+                                            maximum: 100;
+                                            step: 1;
+                                            enabled: !root.busy;
+                                            value <=> root.builtin_bri_draft;
+                                            accessible-label-text: "Laptop screen brightness";
+                                            released(v) => { root.tuning_requested(TuningAction.builtin-brightness, round(v)); }
+                                        }
+                                        if root.builtin_brightness >= 0 : HorizontalLayout {
+                                            spacing: 8px;
+                                            for pct in [25, 50, 75, 100] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: pct + "%";
+                                                active: root.builtin_brightness == pct;
+                                                available: !root.busy;
+                                                clicked => { root.tuning_requested(TuningAction.builtin-brightness, pct); }
+                                            }
+                                        }
+                                    }
+                                    if root.builtin_available && root.builtin_refresh_low > 0 : RowDivider {}
+                                    if root.builtin_available && root.builtin_refresh_low > 0 : ControlBlock {
+                                        title: "Laptop Refresh Rate";
+                                        detail: root.display_mirrored ? "Mirrored" : (root.builtin_refresh_current >= 0 ? root.builtin_refresh_current + " Hz" : "Unavailable");
+                                        for hz in [root.builtin_refresh_low, root.builtin_refresh_high] : SegmentButton {
+                                            horizontal-stretch: 1;
+                                            text: hz + " Hz";
+                                            active: hz == root.builtin_refresh_current;
+                                            available: !root.busy && !root.display_mirrored && hz != root.builtin_refresh_current;
+                                            clicked => { root.tuning_requested(TuningAction.builtin-refresh, hz); }
+                                        }
+                                    }
+                                    if root.builtin_available && root.display_mirrored : RowDivider {}
+                                    if root.builtin_available && root.display_mirrored : Reading {
+                                        label: "Mirror Mode Active";
+                                        subtitle: "Switch to Join Displays in GNOME Display Settings for independent refresh rates";
+                                        value: "Locked";
+                                    }
+                                    if root.overdrive_available && root.builtin_available : RowDivider {}
+                                    if root.overdrive_available : ActionRow {
+                                        title: "Internal Panel Overdrive";
+                                        subtitle: "Improves pixel transition time on laptop display";
+                                        ToggleSwitch {
+                                            label: "Panel overdrive";
+                                            checked: root.overdrive;
+                                            available: root.overdrive_available && !root.busy;
+                                            toggled => { root.overdrive_changed(!root.overdrive); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 2. EXTERNAL MONITOR HARDWARE CONTROLS
+                            if root.display_is_external : VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "External Monitor (" + root.display_name + ")";
+                                    description: "VESA DDC/CI luminance, contrast, and Wayland refresh rate";
+                                }
+                                PreferencesCard {
+                                    Reading {
+                                        label: "Connected Output";
+                                        subtitle: root.display_ddc_available ? "VESA DDC/CI hardware channel online" : "DDC/CI unavailable — enable DDC/CI in monitor OSD";
+                                        value: root.display_name;
+                                    }
+                                    if root.refresh_low > 0 : RowDivider {}
+                                    if root.refresh_low > 0 : ControlBlock {
+                                        title: "Monitor Refresh Rate";
+                                        detail: root.display_mirrored ? "Mirrored" : (root.refresh_current >= 0 ? root.refresh_current + " Hz" : "Unavailable");
+                                        if root.refresh_mid > 0 : HorizontalLayout {
+                                            horizontal-stretch: 1;
+                                            spacing: 8px;
+                                            for hz in [root.refresh_low, root.refresh_mid, root.refresh_high] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                text: hz + " Hz";
+                                                active: hz == root.refresh_current;
+                                                available: !root.busy && !root.display_mirrored && hz != root.refresh_current;
+                                                clicked => { root.tuning_requested(TuningAction.display-refresh, hz); }
+                                            }
+                                        }
+                                        if root.refresh_mid <= 0 : HorizontalLayout {
+                                            horizontal-stretch: 1;
+                                            spacing: 8px;
+                                            for hz in [root.refresh_low, root.refresh_high] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                text: hz + " Hz";
+                                                active: hz == root.refresh_current;
+                                                available: !root.busy && !root.display_mirrored && hz != root.refresh_current;
+                                                clicked => { root.tuning_requested(TuningAction.display-refresh, hz); }
+                                            }
+                                        }
+                                    }
+                                    RowDivider {}
+                                    VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+                                        HorizontalLayout {
+                                            alignment: space-between;
+                                            Text { text: "Monitor Backlight Brightness"; color: Yaru.text; font-size: 13px; font-weight: 500; }
+                                            ValueBadge { text: (root.display_ddc_available && root.display_brightness >= 0) ? round(root.display_bri_draft) + "%" : "Unavailable"; }
+                                        }
+                                        if root.display_ddc_available && root.display_brightness >= 0 : YaruSlider {
+                                            minimum: 0;
+                                            maximum: 100;
+                                            step: 1;
+                                            enabled: !root.busy;
+                                            value <=> root.display_bri_draft;
+                                            accessible-label-text: "Monitor hardware brightness";
+                                            released(v) => { root.tuning_requested(TuningAction.display-brightness, round(v)); }
+                                        }
+                                        if root.display_ddc_available && root.display_brightness >= 0 : HorizontalLayout {
+                                            spacing: 8px;
+                                            for pct in [25, 50, 75, 100] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: pct + "%";
+                                                active: root.display_brightness == pct;
+                                                available: !root.busy;
+                                                clicked => { root.tuning_requested(TuningAction.display-brightness, pct); }
+                                            }
+                                        }
+                                        if !root.display_ddc_available || root.display_brightness < 0 : Text {
+                                            text: "DDC/CI brightness register unreachable on I2C bus";
+                                            color: Yaru.text-dim;
+                                            font-size: 11.5px;
+                                            wrap: word-wrap;
+                                        }
+                                    }
+                                    if root.display_ddc_available : RowDivider {}
+                                    if root.display_ddc_available : VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+                                        HorizontalLayout {
+                                            alignment: space-between;
+                                            Text { text: "Panel Contrast"; color: Yaru.text; font-size: 13px; font-weight: 500; }
+                                            ValueBadge { text: round(root.contrast_draft) + "%"; }
+                                        }
+                                        YaruSlider {
+                                            minimum: 0;
+                                            maximum: 100;
+                                            step: 1;
+                                            enabled: !root.busy;
+                                            value <=> root.contrast_draft;
+                                            accessible-label-text: "Monitor hardware contrast";
+                                            released(v) => { root.display_contrast_changed(round(v)); }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            for c in [
+                                                { label: "Soft (50%)", val: 50 },
+                                                { label: "Balanced (75%)", val: 75 },
+                                                { label: "Full (100%)", val: 100 }
+                                            ] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: c.label;
+                                                active: root.display_contrast == c.val;
+                                                available: !root.busy;
+                                                clicked => { root.display_contrast_changed(c.val); }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 3. COLOR CALIBRATION & RGB GAIN (DDC/CI)
+                            if root.display_is_external && root.display_ddc_available : VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Color Temperature & Calibration";
+                                    description: "Monitor hardware presets (VCP 0x14) and RGB channel gain (VCP 0x16–0x1A)";
+                                }
+                                PreferencesCard {
+                                    VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+                                        Text { text: "Color Temperature"; color: Yaru.text; font-size: 13px; font-weight: 500; }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            for p in [
+                                                { label: "Standard", id: 0 },
+                                                { label: "6500K Warm", id: 1 },
+                                                { label: "9300K Cool", id: 3 }
+                                            ] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: p.label;
+                                                active: root.display_color_preset == p.id;
+                                                available: !root.busy;
+                                                clicked => { root.display_color_preset_changed(p.id); }
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            for p in [
+                                                { label: "sRGB Reference", id: 2 },
+                                                { label: "User Custom RGB", id: 4 }
+                                            ] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: p.label;
+                                                active: root.display_color_preset == p.id;
+                                                available: !root.busy;
+                                                clicked => { root.display_color_preset_changed(p.id); }
+                                            }
+                                        }
+                                    }
+                                    RowDivider {}
+                                    VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+                                        VerticalLayout {
+                                            spacing: 2px;
+                                            Text { text: "RGB Channel Gain"; color: Yaru.text; font-size: 13px; font-weight: 500; }
+                                            Text {
+                                                text: "Automatically selects User Custom color mode when adjusted";
+                                                color: Yaru.text-dim;
+                                                font-size: 11.5px;
+                                                wrap: word-wrap;
+                                            }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 10px;
+                                            alignment: stretch;
+                                            Text { text: "Red"; color: #F28B82; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
+                                            YaruSlider {
+                                                horizontal-stretch: 1;
+                                                minimum: 0;
+                                                maximum: 100;
+                                                step: 1;
+                                                enabled: !root.busy;
+                                                value <=> root.rgb_r_draft;
+                                                accessible-label-text: "Red channel gain";
+                                                released(v) => { root.display_rgb_changed(round(v), round(root.rgb_g_draft), round(root.rgb_b_draft)); }
+                                            }
+                                            ValueBadge { text: round(root.rgb_r_draft) + "%"; }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 10px;
+                                            alignment: stretch;
+                                            Text { text: "Green"; color: #81C995; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
+                                            YaruSlider {
+                                                horizontal-stretch: 1;
+                                                minimum: 0;
+                                                maximum: 100;
+                                                step: 1;
+                                                enabled: !root.busy;
+                                                value <=> root.rgb_g_draft;
+                                                accessible-label-text: "Green channel gain";
+                                                released(v) => { root.display_rgb_changed(round(root.rgb_r_draft), round(v), round(root.rgb_b_draft)); }
+                                            }
+                                            ValueBadge { text: round(root.rgb_g_draft) + "%"; }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 10px;
+                                            alignment: stretch;
+                                            Text { text: "Blue"; color: #8AB4F8; font-size: 12.5px; font-weight: 600; width: 44px; vertical-alignment: center; }
+                                            YaruSlider {
+                                                horizontal-stretch: 1;
+                                                minimum: 0;
+                                                maximum: 100;
+                                                step: 1;
+                                                enabled: !root.busy;
+                                                value <=> root.rgb_b_draft;
+                                                accessible-label-text: "Blue channel gain";
+                                                released(v) => { root.display_rgb_changed(round(root.rgb_r_draft), round(root.rgb_g_draft), round(v)); }
+                                            }
+                                            ValueBadge { text: round(root.rgb_b_draft) + "%"; }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: "Reset RGB";
+                                                available: !root.busy;
+                                                clicked => {
+                                                    root.rgb_r_draft = 100;
+                                                    root.rgb_g_draft = 100;
+                                                    root.rgb_b_draft = 100;
+                                                    root.display_rgb_changed(100, 100, 100);
+                                                }
+                                            }
+                                            SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: "Warm Tint";
+                                                available: !root.busy;
+                                                clicked => {
+                                                    root.rgb_r_draft = 100;
+                                                    root.rgb_g_draft = 90;
+                                                    root.rgb_b_draft = 80;
+                                                    root.display_rgb_changed(100, 90, 80);
+                                                }
+                                            }
+                                            SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: "Cool Tint";
+                                                available: !root.busy;
+                                                clicked => {
+                                                    root.rgb_r_draft = 85;
+                                                    root.rgb_g_draft = 92;
+                                                    root.rgb_b_draft = 100;
+                                                    root.display_rgb_changed(85, 92, 100);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 4. AUDIO, POWER & ORIENTATION
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Audio, Power & Orientation";
+                                    description: "Playback volume, monitor hardware standby, and Wayland display rotation";
+                                }
+                                PreferencesCard {
+                                    VerticalLayout {
+                                        padding-left: 16px;
+                                        padding-right: 16px;
+                                        padding-top: 12px;
+                                        padding-bottom: 12px;
+                                        spacing: 10px;
+                                        HorizontalLayout {
+                                            alignment: space-between;
+                                            Text {
+                                                text: root.display_ddc_audio ? "Monitor Speaker Volume (DDC)" : "System Audio Volume (PipeWire)";
+                                                color: Yaru.text;
+                                                font-size: 13px;
+                                                font-weight: 500;
+                                            }
+                                            ValueBadge { text: root.display_muted ? "Muted" : round(root.display_vol_draft) + "%"; }
+                                        }
+                                        YaruSlider {
+                                            minimum: 0;
+                                            maximum: 100;
+                                            step: 1;
+                                            enabled: !root.busy;
+                                            value <=> root.display_vol_draft;
+                                            accessible-label-text: "Audio output volume";
+                                            released(v) => { root.display_volume_changed(round(v)); }
+                                        }
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: root.display_muted ? "Unmute" : "Mute";
+                                                active: root.display_muted;
+                                                available: !root.busy;
+                                                clicked => { root.display_mute_toggled(!root.display_muted); }
+                                            }
+                                            for v in [25, 50, 75, 100] : SegmentButton {
+                                                horizontal-stretch: 1;
+                                                compact: true;
+                                                text: v + "%";
+                                                active: !root.display_muted && root.display_volume == v;
+                                                available: !root.busy;
+                                                clicked => { root.display_volume_changed(v); }
+                                            }
+                                        }
+                                    }
+                                    if root.display_is_external && root.display_ddc_available : RowDivider {}
+                                    if root.display_is_external && root.display_ddc_available : ActionRow {
+                                        title: "Display Power Standby";
+                                        subtitle: "Put external monitor into hardware standby immediately";
+                                        SegmentButton {
+                                            compact: true;
+                                            text: "Put to Sleep";
+                                            available: !root.busy;
+                                            clicked => { root.display_sleep_requested(); }
+                                        }
+                                    }
+                                    RowDivider {}
+                                    ControlBlock {
+                                        title: "Screen Orientation";
+                                        for orient in [
+                                            { label: "Landscape", id: 0 },
+                                            { label: "90° Left", id: 1 },
+                                            { label: "270° Right", id: 3 },
+                                            { label: "Inverted", id: 2 }
+                                        ] : SegmentButton {
+                                            horizontal-stretch: 1;
+                                            compact: true;
+                                            text: orient.label;
+                                            available: !root.busy;
+                                            clicked => { root.display_orientation_changed(orient.id); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // TAB 4: KEYBOARD LIGHTING
+                        if root.tab == 4 : VerticalLayout {
+                            spacing: 18px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Keyboard Backlight";
+                                    description: "Illumination intensity for the built-in ASUS keyboard";
+                                }
+                                PreferencesCard {
+                                    ControlBlock {
+                                        title: "Brightness Level";
+                                        detail: root.brightness_choices == 0 ? "Unavailable" : "";
+                                        for choice[i] in [
+                                            { label: "Off", bit: 1 },
+                                            { label: "Low", bit: 2 },
+                                            { label: "Medium", bit: 4 },
+                                            { label: "High", bit: 8 }
+                                        ] : SegmentButton {
+                                            horizontal-stretch: 1;
+                                            text: choice.label;
+                                            active: root.brightness == i;
+                                            available: root.supported(root.brightness_choices, choice.bit) && !root.busy;
+                                            clicked => { root.brightness_changed(i); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Aura Dynamic Effects";
+                                    description: "Hardware RGB animation presets";
+                                }
+                                PreferencesCard {
+                                    ControlBlock {
+                                        title: "Active Effect";
+                                        detail: root.current_effect;
+                                        effect := ComboBox {
+                                            horizontal-stretch: 1;
+                                            model: root.aura_names;
+                                            enabled: root.aura_names.length > 0;
+                                            accessible-label: "Choose keyboard effect";
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply Effect";
+                                            available: effect.current-index >= 0 && effect.current-index < root.aura_ids.length && !root.busy;
+                                            clicked => { root.aura_mode_changed(root.aura_ids[effect.current-index]); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            if root.static_color_available : VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Static LED Color";
+                                    description: "Quick color swatches or custom #RRGGBB hex value";
+                                }
+                                PreferencesCard {
+                                    ActionRow {
+                                        title: "Preset Swatches";
+                                        subtitle: root.active_color == "" ? "Choose a color" : "Active: " + root.active_color;
+                                        for preset in [
+                                            { swatch: #E95420, code: "#E95420", label: "Ubuntu Orange" },
+                                            { swatch: #00ffff, code: "#00FFFF", label: "Cyan" },
+                                            { swatch: #ff0033, code: "#FF0033", label: "Red" },
+                                            { swatch: #aa00ff, code: "#AA00FF", label: "Purple" },
+                                            { swatch: #00ff66, code: "#00FF66", label: "Green" },
+                                            { swatch: #ffffff, code: "#FFFFFF", label: "White" },
+                                        ] : ColorSwatch {
+                                            swatch_color: preset.swatch;
+                                            label: preset.label;
+                                            selected: root.active_color == preset.code;
+                                            available: !root.busy;
+                                            clicked => { root.aura_color_selected(preset.code); }
+                                        }
+                                    }
+                                    RowDivider {}
+                                    ControlBlock {
+                                        title: "Custom Hex Color";
+                                        subtitle: root.brightness == 0 ? "Applying a color turns backlight on" : "Six-digit hex value";
+                                        hex := LineEdit {
+                                            horizontal-stretch: 1;
+                                            placeholder-text: "#RRGGBB";
+                                            accessible-label: "Six-digit hex color";
+                                            accepted => { if !root.busy { root.aura_color_selected(self.text); } }
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply Color";
+                                            available: hex.text != "" && !root.busy;
+                                            clicked => { root.aura_color_selected(hex.text); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // TAB 5: BATTERY & STARTUP
+                        if root.tab == 5 : VerticalLayout {
+                            spacing: 18px;
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Charge Threshold";
+                                    description: "Stop charging before 100% to extend battery lifespan";
+                                }
+                                PreferencesCard {
+                                    ControlBlock {
+                                        title: "Preset Limit";
+                                        detail: root.charge_available ? root.charge_limit + "%" : root.battery_limit;
+                                        for limit in [60, 80, 100] : SegmentButton {
+                                            horizontal-stretch: 1;
+                                            text: limit + "%";
+                                            active: root.charge_limit == limit;
+                                            available: root.charge_available && !root.busy;
+                                            clicked => { root.charge_limit_changed(limit); }
+                                        }
+                                    }
+                                    RowDivider {}
+                                    ControlBlock {
+                                        title: "Custom Limit";
+                                        subtitle: "Whole percent from 20 to 100";
+                                        target := LineEdit {
+                                            horizontal-stretch: 1;
+                                            placeholder-text: "20–100%";
+                                            enabled: root.charge_available;
+                                            accessible-label: "Custom charge limit in percent";
+                                            accepted => { if !root.busy { root.custom_charge_requested(self.text); } }
+                                        }
+                                        SegmentButton {
+                                            compact: true;
+                                            primary: true;
+                                            text: "Apply";
+                                            available: root.charge_available && !root.busy && target.text != "";
+                                            clicked => { root.custom_charge_requested(target.text); }
+                                        }
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Battery Condition";
+                                    description: "Live hardware metrics from Linux power_supply sysfs";
+                                }
+                                PreferencesCard {
+                                    Reading {
+                                        label: "Capacity Health";
+                                        subtitle: "Current full charge vs design capacity";
+                                        value: root.battery_health;
+                                    }
+                                    RowDivider {}
+                                    Reading {
+                                        label: "Cycle Count";
+                                        subtitle: "Total charge cycles recorded";
+                                        value: root.battery_cycles;
+                                    }
+                                    RowDivider {}
+                                    Reading {
+                                        label: "Battery State";
+                                        subtitle: "Real-time power flow";
+                                        value: root.battery_state;
+                                    }
+                                    RowDivider {}
+                                    Reading {
+                                        label: "AC Power Adapter";
+                                        subtitle: "External charger connection status";
+                                        value: root.ac_status;
+                                    }
+                                }
+                            }
+
+                            VerticalLayout {
+                                spacing: 4px;
+                                PreferencesGroupTitle {
+                                    text: "Desktop Integration";
+                                    description: "Startup and background tray behavior";
+                                }
+                                PreferencesCard {
+                                    ActionRow {
+                                        title: "Start TUF-Helper at Login";
+                                        subtitle: "Launch minimized in the Ubuntu tray on login";
+                                        ToggleSwitch {
+                                            label: "Start TUF-Helper at login";
+                                            checked: root.autostart_enabled;
+                                            toggled => { root.autostart_toggled(!root.autostart_enabled); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // BOTTOM STATUS BAR
+        Rectangle { height: 1px; background: #303030; }
+        Rectangle {
+            height: 40px;
+            background: root.status_error || root.thermal_alert ? Yaru.error-bg : Yaru.header;
+
+            HorizontalLayout {
+                padding-left: 18px;
+                padding-right: 18px;
+                spacing: 10px;
+                alignment: start;
+
+                VerticalLayout {
+                    alignment: center;
+                    Rectangle {
+                        width: 8px;
+                        height: 8px;
+                        border-radius: 4px;
+                        background: root.status_error || root.thermal_alert ? Yaru.red
+                            : (root.refreshing || root.busy ? Yaru.yellow
+                            : (root.hardware_available ? Yaru.green : Yaru.text-dim));
+                    }
+                }
+
+                Text {
+                    horizontal-stretch: 1;
+                    text: root.thermal_alert ? root.thermal_notice
+                        : (root.status != "" ? root.status
+                        : (root.refreshing ? "Reading hardware telemetry…"
+                        : (root.hardware_available ? "Connected to asusd" : "asusd daemon unavailable")));
+                    color: root.status_error || root.thermal_alert ? Yaru.error-text : Yaru.text-dim;
+                    font-size: 12px;
+                    font-weight: 500;
+                    overflow: elide;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

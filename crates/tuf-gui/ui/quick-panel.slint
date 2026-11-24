@@ -1,0 +1,545 @@
+// Ubuntu 24 (Yaru / Libadwaita + COSMIC Dark) Quick Overview Panel
+
+import { ComboBox } from "std-widgets.slint";
+import {
+    ActionRow, ControlBlock, PreferencesCard, PreferencesGroupTitle, RowDivider,
+    SegmentButton, StatTile, ToggleSwitch, ValueBadge, Yaru, YaruSlider
+} from "components.slint";
+
+export component QuickPanel inherits VerticalLayout {
+    in property <string> profile;
+    in property <int> profile-id;
+    in property <int> profile-choices;
+    in property <bool> fan-available;
+    in property <bool> custom-fans;
+    in property <bool> builtin-available;
+    in property <string> builtin-name: "Laptop Display";
+    in property <int> builtin-brightness: -1;
+    in property <int> builtin-refresh-current: -1;
+    in property <int> builtin-refresh-low: -1;
+    in property <int> builtin-refresh-high: -1;
+    in property <string> display-name: "Display";
+    in property <bool> display-is-external;
+    in property <bool> display-ddc-available;
+    in property <bool> display-mirrored;
+    in property <int> display-brightness: -1;
+    in property <int> refresh-current: -1;
+    in property <int> refresh-low: -1;
+    in property <int> refresh-mid: -1;
+    in property <int> refresh-high: -1;
+    in property <int> display-volume: 100;
+    in property <bool> display-muted: false;
+    in property <int> display-color-preset: 0;
+    in property <string> graphics;
+    in property <string> cpu_temp;
+    in property <string> cpu_fan;
+    in property <string> gpu_temp;
+    in property <string> gpu_fan;
+    in property <string> nvidia_runtime;
+    in property <bool> overdrive_available;
+    in property <bool> overdrive;
+    in property <int> brightness;
+    in property <int> brightness_choices;
+    in property <[string]> aura_names;
+    in property <[int]> aura_ids;
+    in property <string> current_effect;
+    in property <int> charge_limit;
+    in property <bool> charge_available;
+    in property <string> battery_limit;
+    in property <string> battery_percent;
+    in property <string> battery_rate;
+    in property <bool> autostart_enabled;
+    in property <bool> busy;
+
+    callback detail(int);
+    callback select-profile(int);
+    callback fan-preset(bool);
+    callback apply-builtin-brightness(int);
+    callback apply-builtin-refresh(int);
+    callback apply-brightness(int);
+    callback apply-refresh(int);
+    callback set-display-volume(int);
+    callback toggle-display-mute(bool);
+    callback set-display-color-preset(int);
+    callback apply_limit(int);
+    callback set_overdrive(bool);
+    callback set_brightness(int);
+    callback set_effect(int);
+    callback set_autostart(bool);
+
+    private property <float> draft: 80;
+    private property <float> screen-draft: max(0, root.display-brightness);
+    private property <bool> screen-editing;
+    private property <float> builtin-draft: max(5, root.builtin-brightness);
+    private property <bool> builtin-editing;
+    private property <bool> editing;
+    private property <int> proposed: round(root.draft);
+    private property <int> effect_index: -1;
+
+    function supported(mask: int, bit: int) -> bool {
+        return mod(floor(mask / bit), 2) == 1;
+    }
+
+    init => {
+        if root.charge_available { root.draft = clamp(root.charge_limit, 20, 100); }
+    }
+    changed builtin-brightness => {
+        if root.builtin-brightness >= 0 && (!root.builtin-editing || round(root.builtin-draft) == root.builtin-brightness) {
+            root.builtin-draft = max(5, root.builtin-brightness);
+            root.builtin-editing = false;
+        }
+    }
+    changed display-brightness => {
+        if root.display-brightness >= 0 && (!root.screen-editing || round(root.screen-draft) == root.display-brightness) {
+            root.screen-draft = clamp(root.display-brightness, 0, 100);
+            root.screen-editing = false;
+        }
+    }
+    changed charge-limit => {
+        if root.charge_limit >= 20 && root.charge_limit <= 100 {
+            if !root.editing || root.proposed == root.charge_limit {
+                root.draft = root.charge_limit;
+                root.editing = false;
+            }
+        }
+    }
+    changed aura-names => { root.effect_index = -1; }
+
+    spacing: 18px;
+    alignment: start;
+
+    // LIVE TELEMETRY SUMMARY STRIP
+    HorizontalLayout {
+        spacing: 10px;
+        StatTile {
+            title: "CPU";
+            primary: root.cpu_temp;
+            secondary: root.cpu_fan;
+            indicator: Yaru.blue;
+        }
+        StatTile {
+            title: "AMD GPU";
+            primary: root.gpu_temp;
+            secondary: root.gpu_fan;
+            indicator: Yaru.accent;
+        }
+        StatTile {
+            title: "Battery";
+            primary: root.battery_percent;
+            secondary: root.battery_rate;
+            indicator: Yaru.green;
+        }
+    }
+
+    // GROUP 1: POWER & COOLING
+    VerticalLayout {
+        spacing: 4px;
+        PreferencesGroupTitle {
+            text: "Performance & Cooling";
+            description: "Platform power preset and fan response behavior";
+        }
+        PreferencesCard {
+            ControlBlock {
+                title: "Operating Mode";
+                detail: root.profile;
+                for mode[i] in [
+                    { label: "Quiet", id: 2, bit: 4 },
+                    { label: "Balanced", id: 0, bit: 1 },
+                    { label: "Performance", id: 1, bit: 2 }
+                ] : SegmentButton {
+                    horizontal-stretch: 1;
+                    text: mode.label;
+                    active: root.profile-id == mode.id || (i == 0 && root.profile-id == 3);
+                    available: !root.busy && (root.supported(root.profile-choices, mode.bit) || (i == 0 && root.supported(root.profile-choices, 8)));
+                    clicked => { root.select-profile(i == 0 && !root.supported(root.profile-choices, 4) ? 3 : mode.id); }
+                }
+            }
+            RowDivider {}
+            ControlBlock {
+                title: "Fan Curve";
+                subtitle: root.custom-fans ? "Earlier responsive ramp active" : "Automatic BIOS cooling curve";
+                SegmentButton {
+                    horizontal-stretch: 1;
+                    compact: true;
+                    text: "Automatic";
+                    active: !root.custom-fans;
+                    available: root.fan-available && !root.busy && root.custom-fans;
+                    clicked => { root.fan-preset(false); }
+                }
+                SegmentButton {
+                    horizontal-stretch: 1;
+                    compact: true;
+                    text: "Responsive";
+                    active: root.custom-fans;
+                    available: root.fan-available && !root.busy && !root.custom-fans;
+                    clicked => { root.fan-preset(true); }
+                }
+                SegmentButton {
+                    horizontal-stretch: 1;
+                    compact: true;
+                    text: "Graphs →";
+                    clicked => { root.detail(2); }
+                }
+            }
+        }
+    }
+
+    // GROUP 2: GRAPHICS SWITCHER
+    VerticalLayout {
+        spacing: 4px;
+        PreferencesGroupTitle {
+            text: "Graphics & GPU";
+            description: "Hybrid graphics routing and NVIDIA runtime state";
+        }
+        PreferencesCard {
+            ActionRow {
+                title: "Active GPU Mode";
+                subtitle: "NVIDIA runtime: " + root.nvidia_runtime;
+                ValueBadge {
+                    text: root.graphics;
+                    highlight: root.graphics == "Ultimate";
+                }
+                SegmentButton {
+                    compact: true;
+                    text: "Configure →";
+                    clicked => { root.detail(1); }
+                }
+            }
+        }
+    }
+
+    // GROUP 3: DUAL DISPLAYS & MONITOR CONTROLS
+    VerticalLayout {
+        spacing: 4px;
+        PreferencesGroupTitle {
+            text: "Displays & Monitors";
+            description: root.builtin-available && root.display-is-external
+                ? "Independent brightness for laptop panel and " + root.display-name
+                : (root.display-is-external ? root.display-name + " hardware DDC/CI controls" : "Built-in laptop panel controls");
+        }
+        PreferencesCard {
+            if root.builtin-available : VerticalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 12px;
+                padding-bottom: 12px;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        Text {
+                            text: root.builtin-name + " Brightness";
+                            color: Yaru.text;
+                            font-size: 13px;
+                            font-weight: 500;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ValueBadge { text: root.builtin-brightness >= 0 ? round(root.builtin-draft) + "%" : "—"; }
+                        if root.builtin-brightness >= 0 && round(root.builtin-draft) != root.builtin-brightness : SegmentButton {
+                            compact: true;
+                            primary: true;
+                            text: "Apply";
+                            available: !root.busy;
+                            clicked => { root.apply-builtin-brightness(round(root.builtin-draft)); }
+                        }
+                    }
+                }
+                if root.builtin-brightness >= 0 : YaruSlider {
+                    minimum: 5;
+                    maximum: 100;
+                    step: 1;
+                    enabled: !root.busy;
+                    value <=> root.builtin-draft;
+                    accessible-label-text: "Laptop screen brightness";
+                    changed(v) => { root.builtin-editing = round(v) != root.builtin-brightness; }
+                    released(v) => {
+                        if round(v) != root.builtin-brightness {
+                            root.apply-builtin-brightness(round(v));
+                        }
+                    }
+                }
+            }
+            if root.builtin-available && root.display-is-external : RowDivider {}
+            if root.display-is-external : VerticalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 12px;
+                padding-bottom: 12px;
+                spacing: 8px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    spacing: 12px;
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 2px;
+                        Text {
+                            text: root.display-name + " Brightness";
+                            color: Yaru.text;
+                            font-size: 13px;
+                            font-weight: 500;
+                        }
+                        if !root.display-ddc-available : Text {
+                            text: "Enable DDC/CI in monitor OSD or check /dev/i2c permissions";
+                            color: Yaru.text-dim;
+                            font-size: 11px;
+                        }
+                    }
+                    HorizontalLayout {
+                        spacing: 8px;
+                        ValueBadge { text: root.display-ddc-available && root.display-brightness >= 0 ? round(root.screen-draft) + "%" : "DDC Off"; }
+                        if root.display-ddc-available && root.display-brightness >= 0 && round(root.screen-draft) != root.display-brightness : SegmentButton {
+                            compact: true;
+                            primary: true;
+                            text: "Apply";
+                            available: !root.busy;
+                            clicked => { root.apply-brightness(round(root.screen-draft)); }
+                        }
+                    }
+                }
+                if root.display-ddc-available && root.display-brightness >= 0 : YaruSlider {
+                    minimum: 0;
+                    maximum: 100;
+                    step: 1;
+                    enabled: !root.busy;
+                    value <=> root.screen-draft;
+                    accessible-label-text: root.display-name + " brightness";
+                    changed(v) => { root.screen-editing = round(v) != root.display-brightness; }
+                    released(v) => {
+                        if round(v) != root.display-brightness {
+                            root.apply-brightness(round(v));
+                        }
+                    }
+                }
+            }
+            if root.refresh-low > 0 || root.builtin-refresh-low > 0 : RowDivider {}
+            if root.refresh-low > 0 : ControlBlock {
+                title: root.display-name + " Refresh Rate";
+                subtitle: root.display-mirrored ? "Unavailable while displays are mirrored" : "";
+                detail: root.refresh-current >= 0 ? root.refresh-current + " Hz" : "Inactive";
+                if root.refresh-mid > 0 : HorizontalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 8px;
+                    for hz in [root.refresh-low, root.refresh-mid, root.refresh-high] : SegmentButton {
+                        horizontal-stretch: 1;
+                        text: hz + " Hz";
+                        active: hz == root.refresh-current;
+                        available: !root.busy && !root.display-mirrored && hz != root.refresh-current;
+                        clicked => { root.apply-refresh(hz); }
+                    }
+                }
+                if root.refresh-mid <= 0 : HorizontalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 8px;
+                    for hz in [root.refresh-low, root.refresh-high] : SegmentButton {
+                        horizontal-stretch: 1;
+                        text: hz + " Hz";
+                        active: hz == root.refresh-current;
+                        available: !root.busy && !root.display-mirrored && hz != root.refresh-current;
+                        clicked => { root.apply-refresh(hz); }
+                    }
+                }
+            }
+            if root.refresh-low <= 0 && root.builtin-refresh-low > 0 : ControlBlock {
+                title: root.builtin-name + " Refresh Rate";
+                detail: root.builtin-refresh-current >= 0 ? root.builtin-refresh-current + " Hz" : "Inactive";
+                for hz in [root.builtin-refresh-low, root.builtin-refresh-high] : SegmentButton {
+                    horizontal-stretch: 1;
+                    text: hz + " Hz";
+                    active: hz == root.builtin-refresh-current;
+                    available: !root.busy && !root.display-mirrored && hz != root.builtin-refresh-current;
+                    clicked => { root.apply-builtin-refresh(hz); }
+                }
+            }
+            RowDivider {}
+            ControlBlock {
+                title: "Display Quick Actions";
+                subtitle: "Color warmth, audio mute, and full monitor controls";
+                if root.display-is-external : SegmentButton {
+                    horizontal-stretch: 1;
+                    text: root.display-color-preset == 1 ? "6500K: On" : "Warm 6500K";
+                    active: root.display-color-preset == 1;
+                    available: root.display-ddc-available && !root.busy;
+                    clicked => { root.set-display-color-preset(root.display-color-preset == 1 ? 0 : 1); }
+                }
+                SegmentButton {
+                    horizontal-stretch: 1;
+                    text: root.display-muted ? "Muted" : "Mute Audio";
+                    active: root.display-muted;
+                    available: !root.busy;
+                    clicked => { root.toggle-display-mute(!root.display-muted); }
+                }
+                SegmentButton {
+                    horizontal-stretch: 1;
+                    text: "All Controls →";
+                    clicked => { root.detail(3); }
+                }
+            }
+            if root.overdrive_available : RowDivider {}
+            if root.overdrive_available : ActionRow {
+                title: "Panel Overdrive";
+                subtitle: "Reduces pixel ghosting on built-in panel";
+                ToggleSwitch {
+                    label: "Panel overdrive";
+                    checked: root.overdrive;
+                    available: root.overdrive_available && !root.busy;
+                    toggled => { root.set_overdrive(!root.overdrive); }
+                }
+            }
+        }
+    }
+
+    // GROUP 4: KEYBOARD LIGHTING
+    VerticalLayout {
+        spacing: 4px;
+        PreferencesGroupTitle {
+            text: "Keyboard Backlight";
+            description: "Illumination brightness and Aura lighting effect";
+        }
+        PreferencesCard {
+            ControlBlock {
+                title: "Brightness Level";
+                for level[i] in ["Off", "Low", "Medium", "High"] : SegmentButton {
+                    horizontal-stretch: 1;
+                    text: level;
+                    active: root.brightness == i;
+                    available: mod(floor(root.brightness_choices / [1, 2, 4, 8][i]), 2) == 1 && !root.busy;
+                    clicked => { root.set_brightness(i); }
+                }
+            }
+            RowDivider {}
+            ControlBlock {
+                title: "Aura Effect";
+                detail: root.current_effect;
+                effects := ComboBox {
+                    horizontal-stretch: 1;
+                    model: root.aura_names;
+                    enabled: root.aura_names.length > 0;
+                    accessible-label: "Choose keyboard effect";
+                    selected => { root.effect_index = self.current-index; }
+                }
+                SegmentButton {
+                    compact: true;
+                    primary: true;
+                    text: "Apply";
+                    available: root.effect_index >= 0 && root.effect_index < root.aura_ids.length && !root.busy;
+                    clicked => { root.set_effect(root.aura_ids[root.effect_index]); }
+                }
+                SegmentButton {
+                    compact: true;
+                    text: "Colors →";
+                    clicked => { root.detail(4); }
+                }
+            }
+        }
+    }
+
+    // GROUP 5: BATTERY & STARTUP
+    VerticalLayout {
+        spacing: 4px;
+        PreferencesGroupTitle {
+            text: "Battery Care & Startup";
+            description: "Charge threshold limits and background launch";
+        }
+        PreferencesCard {
+            VerticalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 12px;
+                padding-bottom: 14px;
+                spacing: 10px;
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    spacing: 12px;
+                    VerticalLayout {
+                        spacing: 2px;
+                        Text {
+                            text: "Charge Limit";
+                            color: Yaru.text;
+                            font-size: 13px;
+                            font-weight: 500;
+                        }
+                        Text {
+                            text: root.charge_available ? "Active limit: " + root.charge_limit + "%" : root.battery_limit;
+                            color: Yaru.text-dim;
+                            font-size: 11.5px;
+                        }
+                    }
+                    ValueBadge {
+                        text: root.charge_available ? root.proposed + "%" : "—";
+                    }
+                }
+                YaruSlider {
+                    minimum: 20;
+                    maximum: 100;
+                    step: 1;
+                    enabled: root.charge_available && !root.busy;
+                    value <=> root.draft;
+                    accessible-label-text: "Draft charge limit";
+                    changed(v) => { root.editing = round(v) != root.charge_limit; }
+                }
+                HorizontalLayout {
+                    spacing: 8px;
+                    SegmentButton {
+                        horizontal-stretch: 1;
+                        compact: true;
+                        text: "Limit 80%";
+                        active: root.charge_limit == 80;
+                        available: root.charge_available && !root.busy;
+                        clicked => {
+                            root.draft = 80;
+                            root.editing = true;
+                            root.apply_limit(80);
+                        }
+                    }
+                    SegmentButton {
+                        horizontal-stretch: 1;
+                        compact: true;
+                        text: "Full 100%";
+                        active: root.charge_limit == 100;
+                        available: root.charge_available && !root.busy;
+                        clicked => {
+                            root.draft = 100;
+                            root.editing = true;
+                            root.apply_limit(100);
+                        }
+                    }
+                    if root.charge_available && root.proposed != root.charge_limit : SegmentButton {
+                        horizontal-stretch: 1;
+                        compact: true;
+                        primary: true;
+                        text: "Apply";
+                        available: !root.busy;
+                        clicked => { root.apply_limit(root.proposed); }
+                    }
+                }
+            }
+            RowDivider {}
+            ActionRow {
+                title: "Battery Condition";
+                subtitle: "Health and charge cycle report";
+                SegmentButton {
+                    compact: true;
+                    text: "Battery Details →";
+                    clicked => { root.detail(5); }
+                }
+            }
+            RowDivider {}
+            ActionRow {
+                title: "Start at Login";
+                subtitle: "Run minimized in the Ubuntu top panel tray";
+                ToggleSwitch {
+                    checked: root.autostart_enabled;
+                    label: "Run TUF-Helper at login";
+                    toggled => { root.set_autostart(!root.autostart_enabled); }
+                }
+            }
+        }
+    }
+}

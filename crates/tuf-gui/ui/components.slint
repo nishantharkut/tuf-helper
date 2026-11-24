@@ -1,0 +1,667 @@
+// Ubuntu 24 (Yaru / Libadwaita + COSMIC Dark) Component Library
+// Uses 100% opaque solid tokens and padded layouts for instant software-renderer speed and zero clipping.
+
+export global Yaru {
+    out property <color> bg: #1c1c1c;
+    out property <color> header: #242424;
+    out property <color> card: #282828;
+    out property <color> card-border: #383838;
+    out property <color> divider: #333333;
+    out property <color> control: #343434;
+    out property <color> control-hover: #404040;
+    out property <color> control-pressed: #2c2c2c;
+    out property <color> control-border: #464646;
+    out property <color> accent: #E95420;
+    out property <color> accent-hover: #F26534;
+    out property <color> accent-pressed: #C94417;
+    out property <color> blue: #3584E4;
+    out property <color> text: #F3F3F3;
+    out property <color> text-dim: #A0A0A0;
+    out property <color> text-muted: #7C7C7C;
+    out property <color> badge-bg: #353535;
+    out property <color> green: #2EC27E;
+    out property <color> yellow: #F5C211;
+    out property <color> red: #ED333B;
+    out property <color> error-bg: #362022;
+    out property <color> error-border: #783037;
+    out property <color> error-text: #FCA5A5;
+}
+
+export component PreferencesGroupTitle inherits HorizontalLayout {
+    in property <string> text;
+    in property <string> description;
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-bottom: 6px;
+
+    VerticalLayout {
+        spacing: 2px;
+        Text {
+            text: root.text;
+            font-size: 13px;
+            font-weight: 700;
+            color: Yaru.text;
+        }
+        if root.description != "" : Text {
+            text: root.description;
+            font-size: 12px;
+            color: Yaru.text-dim;
+            wrap: word-wrap;
+        }
+    }
+}
+
+export component PreferencesCard inherits Rectangle {
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Yaru.card-border;
+    background: Yaru.card;
+    clip: true;
+
+    VerticalLayout {
+        padding: 0px;
+        spacing: 0px;
+        @children
+    }
+}
+
+export component RowDivider inherits HorizontalLayout {
+    padding-left: 16px;
+    padding-right: 16px;
+    Rectangle {
+        height: 1px;
+        background: Yaru.divider;
+    }
+}
+
+export component ValueBadge inherits Rectangle {
+    in property <string> text;
+    in property <bool> highlight: false;
+    in property <color> highlight_color: Yaru.accent;
+
+    height: 28px;
+    min-width: badge_row.min-width;
+    border-radius: 7px;
+    background: root.highlight ? root.highlight_color : Yaru.badge-bg;
+    border-width: 1px;
+    border-color: root.highlight ? root.highlight_color : Yaru.control-border;
+
+    badge_row := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        alignment: center;
+        Text {
+            text: root.text;
+            color: Yaru.text;
+            font-size: 12px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component SegmentButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> active: false;
+    in property <bool> primary: false;
+    in property <bool> compact: false;
+    in property <color> active_bg: Yaru.accent;
+    in property <color> active_border: Yaru.accent;
+    in property <color> active_text: #ffffff;
+    in property <bool> available: true;
+    callback clicked();
+
+    min-width: label_row.min-width;
+    height: root.compact ? 34px : 38px;
+    forward-focus: keys;
+    accessible-role: button;
+    accessible-label: root.text;
+    accessible-enabled: root.available;
+    accessible-action-default => { if root.available { root.clicked(); } }
+
+    keys := FocusScope {
+        width: 0px;
+        enabled: root.available;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.clicked();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    background: primary ? (touch.pressed ? Yaru.accent-pressed : (touch.has-hover ? Yaru.accent-hover : Yaru.accent))
+        : (active ? root.active_bg
+        : (!root.available ? #2b2b2b
+        : (touch.pressed ? Yaru.control-pressed : (touch.has-hover ? Yaru.control-hover : Yaru.control))));
+
+    border-color: keys.has-focus ? #ffffff
+        : (active || primary ? root.active_border
+        : (!root.available ? #353535 : Yaru.control-border));
+    border-width: 1px;
+    border-radius: 8px;
+    opacity: (root.available || root.active) ? 1.0 : 0.45;
+
+    touch := TouchArea {
+        enabled: root.available;
+        clicked => { root.clicked(); }
+        mouse-cursor: root.available ? pointer : default;
+    }
+
+    label_row := HorizontalLayout {
+        padding-left: root.compact ? 14px : 18px;
+        padding-right: root.compact ? 14px : 18px;
+        padding-top: 6px;
+        padding-bottom: 6px;
+        alignment: center;
+        Text {
+            text: root.text;
+            color: primary || active ? root.active_text : (touch.has-hover ? #ffffff : Yaru.text);
+            font-size: root.compact ? 12px : 12.5px;
+            font-weight: active || primary ? 600 : 500;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component ToggleSwitch inherits Rectangle {
+    in property <bool> checked;
+    in property <bool> available: true;
+    in property <string> label;
+    callback toggled();
+
+    forward-focus: keys;
+    accessible-role: checkbox;
+    accessible-label: root.label;
+    accessible-enabled: root.available;
+    accessible-checkable: true;
+    accessible-checked: root.checked;
+    accessible-action-default => { if root.available { root.toggled(); } }
+
+    keys := FocusScope {
+        width: 0px;
+        enabled: root.available;
+        key-pressed(event) => {
+            if event.text == Key.Space || event.text == Key.Return {
+                root.toggled();
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    width: 46px;
+    height: 26px;
+    border-radius: 13px;
+    border-width: keys.has-focus ? 1px : 1px;
+    border-color: keys.has-focus ? #ffffff : (checked ? Yaru.accent : #4d4d4d);
+    background: checked ? (touch.has-hover ? Yaru.accent-hover : Yaru.accent)
+        : (touch.has-hover ? #484848 : #3c3c3c);
+    opacity: root.available ? 1.0 : 0.45;
+
+    touch := TouchArea {
+        enabled: root.available;
+        clicked => { root.toggled(); }
+        mouse-cursor: root.available ? pointer : default;
+    }
+
+    Rectangle {
+        x: root.checked ? 22px : 3px;
+        y: 3px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: #ffffff;
+    }
+}
+
+export component YaruSlider inherits Rectangle {
+    in-out property <float> value: 50;
+    in property <float> minimum: 0;
+    in property <float> maximum: 100;
+    in property <float> step: 1;
+    in property <bool> enabled: true;
+    in property <string> accessible-label-text: "Slider";
+    callback changed(float);
+    callback released(float);
+
+    private property <float> range: max(1, root.maximum - root.minimum);
+    private property <float> clamped: clamp(root.value, root.minimum, root.maximum);
+    private property <float> frac: (root.clamped - root.minimum) / root.range;
+    private property <length> usable: max(1px, root.width - 18px);
+
+    height: 28px;
+    min-width: 140px;
+    horizontal-stretch: 1;
+    opacity: root.enabled ? 1.0 : 0.45;
+    forward-focus: keys;
+    accessible-role: slider;
+    accessible-enabled: root.enabled;
+    accessible-label: root.accessible-label-text;
+    accessible-value: root.value;
+    accessible-value-minimum: root.minimum;
+    accessible-value-maximum: root.maximum;
+    accessible-value-step: root.step;
+
+    function update-from-x(px: length) {
+        let ratio = clamp((px - 9px) / root.usable, 0, 1);
+        let raw = root.minimum + ratio * root.range;
+        let stepped = round(raw / root.step) * root.step;
+        let next = clamp(stepped, root.minimum, root.maximum);
+        if next != root.value {
+            root.value = next;
+            root.changed(next);
+        }
+    }
+
+    keys := FocusScope {
+        width: 0px;
+        enabled: root.enabled;
+        key-pressed(event) => {
+            if event.text == Key.LeftArrow {
+                let next = clamp(root.value - root.step, root.minimum, root.maximum);
+                root.value = next;
+                root.changed(next);
+                root.released(next);
+                return accept;
+            }
+            if event.text == Key.RightArrow {
+                let next = clamp(root.value + root.step, root.minimum, root.maximum);
+                root.value = next;
+                root.changed(next);
+                root.released(next);
+                return accept;
+            }
+            return reject;
+        }
+    }
+
+    // Track background
+    Rectangle {
+        x: 9px;
+        y: (parent.height - self.height) / 2;
+        width: root.usable;
+        height: 6px;
+        border-radius: 3px;
+        background: #3e3e3e;
+    }
+
+    // Filled progress
+    Rectangle {
+        x: 9px;
+        y: (parent.height - self.height) / 2;
+        width: root.usable * root.frac;
+        height: 6px;
+        border-radius: 3px;
+        background: root.enabled ? Yaru.accent : #666666;
+    }
+
+    // Thumb knob
+    Rectangle {
+        x: 9px + root.usable * root.frac - 9px;
+        y: (parent.height - self.height) / 2;
+        width: 18px;
+        height: 18px;
+        border-radius: 9px;
+        background: #ffffff;
+        border-width: keys.has-focus ? 2px : 1.5px;
+        border-color: keys.has-focus ? #ffffff : (root.enabled ? Yaru.accent : #666666);
+    }
+
+    touch := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: root.enabled ? pointer : default;
+        pointer-event(event) => {
+            if event.kind == PointerEventKind.down && event.button == PointerEventButton.left {
+                root.update-from-x(self.mouse-x);
+            } else if event.kind == PointerEventKind.up && event.button == PointerEventButton.left {
+                root.released(root.value);
+            }
+        }
+        moved => {
+            if self.pressed {
+                root.update-from-x(self.mouse-x);
+            }
+        }
+    }
+}
+
+export component ColorSwatch inherits Rectangle {
+    in property <color> swatch_color;
+    in property <string> label;
+    in property <bool> selected: false;
+    in property <bool> available: true;
+    callback clicked();
+
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-enabled: root.available;
+    accessible-action-default => { if root.available { root.clicked(); } }
+
+    width: 30px;
+    height: 30px;
+    border-radius: 15px;
+    background: root.swatch_color;
+    border-color: selected ? #ffffff : #4a4a4a;
+    border-width: selected ? 2.5px : 1px;
+    opacity: root.available ? 1.0 : 0.45;
+
+    touch := TouchArea {
+        enabled: root.available;
+        clicked => { root.clicked(); }
+        mouse-cursor: root.available ? pointer : default;
+    }
+}
+
+export component StatTile inherits Rectangle {
+    in property <string> title;
+    in property <string> primary;
+    in property <string> secondary;
+    in property <color> indicator: Yaru.accent;
+
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Yaru.card-border;
+    background: Yaru.card;
+    horizontal-stretch: 1;
+
+    VerticalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 4px;
+
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+            VerticalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 6px;
+                    height: 6px;
+                    border-radius: 3px;
+                    background: root.indicator;
+                }
+            }
+            Text {
+                text: root.title;
+                color: Yaru.text-dim;
+                font-size: 11px;
+                font-weight: 600;
+            }
+        }
+        Text {
+            text: root.primary;
+            color: Yaru.text;
+            font-size: 16px;
+            font-weight: 700;
+            overflow: elide;
+        }
+        Text {
+            text: root.secondary;
+            color: Yaru.text-dim;
+            font-size: 11px;
+            overflow: elide;
+        }
+    }
+}
+
+export component ActionRow inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    min-height: 52px;
+    background: transparent;
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 14px;
+        alignment: space-between;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 3px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.title;
+                color: Yaru.text;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            if root.subtitle != "" : Text {
+                text: root.subtitle;
+                color: Yaru.text-dim;
+                font-size: 11.5px;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            HorizontalLayout {
+                alignment: end;
+                spacing: 8px;
+                @children
+            }
+        }
+    }
+}
+
+export component ControlBlock inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> detail;
+    background: transparent;
+
+    VerticalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
+        padding-bottom: 14px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            spacing: 12px;
+            alignment: space-between;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 2px;
+                Text {
+                    text: root.title;
+                    color: Yaru.text;
+                    font-size: 13px;
+                    font-weight: 500;
+                }
+                if root.subtitle != "" : Text {
+                    text: root.subtitle;
+                    color: Yaru.text-dim;
+                    font-size: 11.5px;
+                    wrap: word-wrap;
+                }
+            }
+            if root.detail != "" : VerticalLayout {
+                alignment: center;
+                ValueBadge { text: root.detail; }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 8px;
+            @children
+        }
+    }
+}
+
+export component Reading inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <string> subtitle;
+    min-height: 50px;
+    background: transparent;
+
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 14px;
+        alignment: space-between;
+
+        VerticalLayout {
+            alignment: center;
+            spacing: 2px;
+            horizontal-stretch: 1;
+            Text {
+                text: root.label;
+                color: Yaru.text;
+                font-size: 13px;
+                font-weight: 500;
+            }
+            if root.subtitle != "" : Text {
+                text: root.subtitle;
+                color: Yaru.text-dim;
+                font-size: 11.5px;
+                wrap: word-wrap;
+            }
+        }
+
+        VerticalLayout {
+            alignment: center;
+            ValueBadge { text: root.value; }
+        }
+    }
+}
+
+export component ViewTabButton inherits Rectangle {
+    in property <string> text;
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 34px;
+    min-width: row.min-width;
+    border-radius: 8px;
+    background: active ? #363636 : (touch.has-hover ? #2d2d2d : transparent);
+    border-width: active ? 1px : 0px;
+    border-color: active ? #464646 : transparent;
+
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+        mouse-cursor: pointer;
+    }
+
+    row := HorizontalLayout {
+        padding-left: 8px;
+        padding-right: 8px;
+        alignment: center;
+        spacing: 5px;
+
+        if active : VerticalLayout {
+            alignment: center;
+            Rectangle {
+                width: 5px;
+                height: 5px;
+                border-radius: 2.5px;
+                background: Yaru.accent;
+            }
+        }
+
+        Text {
+            text: root.text;
+            color: active ? #ffffff : (touch.has-hover ? #e0e0e0 : Yaru.text-dim);
+            font-size: 12px;
+            font-weight: active ? 600 : 500;
+            vertical-alignment: center;
+        }
+    }
+}
+
+export component HistoryChart inherits Rectangle {
+    in property <string> first_path;
+    in property <string> second_path;
+    in property <string> title;
+    in property <string> scale_top;
+    in property <string> scale_bottom;
+    in property <string> legend;
+    in property <string> peaks;
+
+    border-radius: 12px;
+    border-width: 1px;
+    border-color: Yaru.card-border;
+    background: Yaru.card;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+
+        HorizontalLayout {
+            alignment: space-between;
+            spacing: 8px;
+            Text {
+                text: root.title;
+                color: Yaru.text;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            Text {
+                text: root.legend;
+                color: Yaru.text-dim;
+                font-size: 11.5px;
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 10px;
+            VerticalLayout {
+                width: 52px;
+                alignment: space-between;
+                Text { text: root.scale_top; color: Yaru.text-muted; font-size: 10px; }
+                Text { text: root.scale_bottom; color: Yaru.text-muted; font-size: 10px; }
+            }
+            Rectangle {
+                height: 76px;
+                horizontal-stretch: 1;
+                background: #1a1a1a;
+                border-radius: 8px;
+                border-width: 1px;
+                border-color: #303030;
+
+                Rectangle {
+                    y: parent.height / 2;
+                    height: 1px;
+                    background: #282828;
+                }
+
+                Path {
+                    width: parent.width;
+                    height: parent.height;
+                    commands: root.first_path;
+                    viewbox-width: 360;
+                    viewbox-height: 80;
+                    fit: fill;
+                    stroke: Yaru.blue;
+                    stroke-width: 1.8px;
+                }
+                Path {
+                    width: parent.width;
+                    height: parent.height;
+                    commands: root.second_path;
+                    viewbox-width: 360;
+                    viewbox-height: 80;
+                    fit: fill;
+                    stroke: Yaru.accent;
+                    stroke-width: 1.8px;
+                }
+            }
+        }
+        Text {
+            text: root.peaks;
+            color: Yaru.text-dim;
+            font-size: 11.5px;
+        }
+    }
+}
