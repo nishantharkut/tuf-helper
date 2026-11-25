@@ -14,7 +14,7 @@
   <p>
     <a href="#interface-overview">Overview</a> &middot;
     <a href="#screenshots">Screenshots</a> &middot;
-    <a href="#tested-hardware-compatibility">Hardware</a> &middot;
+    <a href="#supported-hardware-scope">Hardware</a> &middot;
     <a href="#measured-performance--comparison">Benchmarks</a> &middot;
     <a href="#architecture">Architecture</a> &middot;
     <a href="#installation">Install</a> &middot;
@@ -68,22 +68,22 @@
 
 ---
 
-## Tested Hardware Compatibility
+## Supported Hardware Scope
 
-| Hardware | OS / Compositor | Daemon / Protocol | Verified Scope |
-| --- | --- | --- | --- |
-| **ASUS TUF Gaming A15 (`ASUS-TUF-Laptop`)** | Ubuntu 24.04 LTS (GNOME Wayland) | `asusd` | Profiles, 80%/100% &amp; One-Shot charge, Aura RGB, 8-pt fan curves, SPPT/FPPT/Dynamic Boost, AC/Battery rules |
-| **Lenovo `MCCS-Monitor`** (`HDMI-1` / `/dev/i2c-*`) | Ubuntu 24.04 LTS (`i2c-dev`) | `MCCS v2.2` | Brightness (`0x10`), Contrast (`0x12`), Presets (`0x14`), Input (`0x60`), Scaling (`0x86`), 100 Hz switching |
+| Category | Environment / Protocol | Supported Controls |
+| --- | --- | --- |
+| **ASUS TUF &amp; ROG Laptops** | Linux + `asusd` (Wayland / GNOME) | Profiles, 80%/100% &amp; One-Shot charge, Aura RGB, 8-pt fan curves, SPPT/FPPT/Dynamic Boost, AC/Battery rules |
+| **External DDC/CI Monitors** | `i2c-dev` + `MCCS` (`HDMI` / `DP`) | Brightness (`0x10`), Contrast (`0x12`), Presets (`0x14`), Input (`0x60`), Scaling (`0x86`), refresh switching |
 
 > [!TIP]
-> Running another ASUS TUF/ROG laptop or DDC/CI monitor? Share your `cargo run --locked -p tuf-core --example test_hw` output in a [Hardware Compatibility report](https://github.com/nishantharkut/tuf-helper/issues/new/choose) or [Discussions](https://github.com/nishantharkut/tuf-helper/discussions). In GNOME Display Settings, use **Join Displays** (not **Mirror**) for independent per-display refresh rates.
+> Running on another ASUS TUF/ROG laptop or DDC/CI monitor? Share your sanitized `cargo run --locked -p tuf-core --example test_hw` capability summary in a [Hardware Compatibility report](https://github.com/nishantharkut/tuf-helper/issues/new/choose) or [Discussions](https://github.com/nishantharkut/tuf-helper/discussions). In GNOME Display Settings, use **Join Displays** (not **Mirror**) for independent per-display refresh rates.
 
 ---
 
 ## Measured Performance & Comparison
 
 > [!NOTE]
-> Local timings were measured in `--release` on an **ASUS TUF Gaming A15 (`ASUS-TUF-Laptop`)** running **Ubuntu 24.04 LTS (GNOME Wayland)** with a **External MCCS Monitor (`HDMI-1` / `/dev/i2c-*`)**.
+> Representative local timings measured in `--release` on a hybrid AMD + NVIDIA ASUS TUF laptop running Ubuntu GNOME Wayland with an external VESA MCCS monitor over `/dev/i2c-*`.
 
 ### Sysfs, D-Bus &amp; DDC/CI Latency
 

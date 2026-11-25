@@ -2487,7 +2487,7 @@ mod tests {
         edid[9] = 0xae;
         // Descriptor 1: Monitor Name (0xFC) "MCCS-Monitor"
         edid[57] = 0xfc;
-        edid[59..67].copy_from_slice(b"MCCS-Monitor\n");
+        edid[59..72].copy_from_slice(b"MCCS-Monitor\n");
         // Descriptor 2: Serial (0xFF) "URHR3B8P"
         edid[75] = 0xff;
         edid[77..85].copy_from_slice(b"URHR3B8P");
