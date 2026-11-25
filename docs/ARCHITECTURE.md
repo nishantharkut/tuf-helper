@@ -86,7 +86,7 @@ graph TD
 ## Renderer & dGPU Power Hygiene
 
 > [!NOTE]
-> On hybrid AMD + NVIDIA laptops (such as ASUS-TUF-Laptop/ASUS-TUF-Laptop), opening an OpenGL desktop window through GLVND defaults can wake the discrete NVIDIA GPU simply to render GUI frames.
+> On hybrid AMD + NVIDIA laptops, opening an OpenGL desktop window through GLVND defaults can wake the discrete NVIDIA GPU simply to render GUI frames.
 
 To avoid unnecessary dGPU wakeups, `configure_renderer()` in `crates/tuf-gui/src/main.rs`:
 1. Honors any user-supplied `SLINT_BACKEND` environment override.

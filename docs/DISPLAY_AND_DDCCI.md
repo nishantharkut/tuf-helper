@@ -51,7 +51,7 @@ Rather than hard-coding OSD menus for a single monitor model, `DdcDevice::get_ca
 
 ## Protocol Hardening, EEPROM Deduplication & Safety Guards
 
-Real external monitors (verified directly against a **External MCCS Monitor** on `/dev/i2c-*`) reject fast back-to-back I2C polls or malformed VCP assumptions:
+Real external monitors over `/dev/i2c-*` reject fast back-to-back I2C polls or malformed VCP assumptions:
 
 - **Strict DDC/CI Timing & Retries:** Every `Get VCP` sleeps `50 ms` after transmission and retries up to 4 times on DDC Null Messages (`0x6E 0x80 0xBE`) or bus contention. `Set VCP` enforces a `60 ms` settle delay before subsequent reads.
 - **Result Code & Checksum Verification:** `parse_vcp_reply` checks payload length (`0x88`), opcode (`0x02`), XOR checksum (`0x50 ^ reply[..10]`), and **VCP result code `reply[3] == 0x00`**. Unsupported features (`rc != 0`) return `VcpError::Unsupported` rather than emitting bogus zero values.
